@@ -2,7 +2,7 @@
 /build/
 /bin/
 /obj/
-/Debug/
+**/Debug/
 
 # CMake-specific files (if using CMake)
 CMakeCache.txt
