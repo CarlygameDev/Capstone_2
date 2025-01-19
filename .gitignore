@@ -3,8 +3,9 @@
 /bin/
 /obj/
 **/Debug/
-/models/
+/models
 /Cap2/x64
+/x64/Debug
 
 # CMake-specific files (if using CMake)
 CMakeCache.txt
