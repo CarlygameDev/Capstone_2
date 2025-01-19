@@ -1,0 +1,81 @@
+# Ignore build and output directories
+/build/
+/bin/
+/obj/
+
+# CMake-specific files (if using CMake)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Visual Studio-specific files
+.vs/
+.vscode/
+*.vcxproj.user
+*.vcxproj.filters
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Compiled object files and precompiled headers
+*.o
+*.obj
+*.slo
+*.lo
+*.pch
+*.pdb
+*.dSYM/
+
+# Compiled dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled static libraries
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Log and temporary files
+*.log
+*.tmp
+*.swp
+
+# OS-specific files
+# macOS Finder metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows-specific files
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Backup and temporary files
+*.bak
+*.old
+*.swp
+*.temp
+*.~lock.*
+
+# OpenGL shader files (only compiled binaries should be ignored)
+*.spv
+*.fragspv
+*.vertspv
+*.geomspv
+
+# Ignore large assets (use Git LFS for large files)
+*.bmp
+*.tga
+*.obj
+*.fbx
+*.blend
+*.gltf
+*.glb
+*.stl
