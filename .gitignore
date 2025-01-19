@@ -4,6 +4,7 @@
 /obj/
 **/Debug/
 /models/*
+!/models/.gitkeep
 /Cap2/x64
 /x64/Debug
 
