@@ -2,6 +2,7 @@
 /build/
 /bin/
 /obj/
+/Debug/
 
 # CMake-specific files (if using CMake)
 CMakeCache.txt
