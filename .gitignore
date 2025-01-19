@@ -30,11 +30,11 @@ Makefile
 # Compiled dynamic libraries
 *.so
 *.dylib
-*.dll
+
 
 # Compiled static libraries
 *.a
-*.lib
+
 
 # Executables
 *.exe
