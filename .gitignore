@@ -4,6 +4,7 @@
 /obj/
 **/Debug/
 /models/
+/Cap2/x64
 
 # CMake-specific files (if using CMake)
 CMakeCache.txt
@@ -81,4 +82,3 @@ $RECYCLE.BIN/
 *.gltf
 *.glb
 *.stl
-/Cap2/x64

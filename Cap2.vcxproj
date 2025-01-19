@@ -75,8 +75,8 @@
     <LibraryPath>D:\2025 spring\capstone 2\Cap2\dependencies\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\Users\carly\Downloads\Capstone_2\dependencies\include;C:\Users\carly\Downloads\Capstone_2\scripts;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\carly\Downloads\Capstone_2\dependencies\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)dependencies\include;$(ProjectDir)scripts;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)dependencies\lib;$(LibraryPath)</LibraryPath>
     <SourcePath>$(SourcePath)</SourcePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
