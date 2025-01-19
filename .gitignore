@@ -3,6 +3,7 @@
 /bin/
 /obj/
 **/Debug/
+/models/
 
 # CMake-specific files (if using CMake)
 CMakeCache.txt
