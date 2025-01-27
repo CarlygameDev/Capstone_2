@@ -1,20 +1,20 @@
-#version 330 core
+﻿#version 330 core
 layout (location = 0) in vec3 aPos; // Vertex position
 
-
-out vec3 fragNormal;  // Pass the transformed normal to the fragment shader
-out vec3 fragPosition; // Pass the transformed position to the fragment shader
+out vec3 fragNormal;    // Pass the transformed normal to the fragment shader
+out vec3 fragPosition;  // Pass the transformed position to the fragment shader
 
 uniform mat4 projection;
 uniform mat4 view;
 uniform mat4 model;
 uniform float time;
 
-float amplitude=20;
-float wave_length=50;
-float speed=25f;
-int waves=64;
-float k=2;
+float amplitude = 10.0;
+float wave_length = 30.0;
+float speed = 25.0f;
+int waves = 32;
+float k = 2.5;
+
 void main()
 {
     vec3 position = aPos;
@@ -25,45 +25,54 @@ void main()
     float wl = wave_length;
 
     vec2 warpedXZ = position.xz; // Warped domain starts as the original domain
-
-    float warpStrength = 0.1; // Control the intensity of domain warping
+    float warpStrength = 0.05;    // Softer domain warping
 
     for (int i = 0; i < waves; i++) {
         float phase = float(i) * 0.5;
         float wave_frequency = 2.0 / wl; // Varying wavelength
-        float wave_speed = speed * (2.0 / wl);
-        vec2 direction = vec2(cos(phase), sin(phase));
+        float wave_speed = speed * (2.0 / wl) + float(i) * 0.1; // Slight variation
+        vec2 direction = normalize(vec2(cos(phase), sin(phase)));
 
         // Precompute reusable values using the warped domain
         float wave_dot = dot(warpedXZ, direction) * wave_frequency + time * wave_speed;
 
+        // Modulate amplitude dynamically
+        float adjusted_a = a * (1.0 + 0.1 * sin(time + float(i)));
+        float adjusted_k = k + 0.1 * sin(time + float(i)); // Vary k slightly
+
         // Calculate wave displacement
-        float wave_displacement = a * pow((sin(wave_dot + 1.0) / 2.0), k);
+        float wave_displacement = adjusted_a * pow(max((sin(wave_dot + 1.0) / 2.0), 0.0001), adjusted_k);
         position.y += wave_displacement;
 
         // Partial derivatives for tangents
-        float wave_PD = pow((sin(wave_dot + 1.0) / 2.0), max(k - 1.0, 1.0));
-        float dx = k * direction.x * wave_frequency * a * wave_PD * cos(wave_dot);
-        float dz = k * direction.y * wave_frequency * a * wave_PD * cos(wave_dot);
+        float wave_PD = pow(max((sin(wave_dot + 1.0) / 2.0), 0.0001), max(adjusted_k - 1.0, 0.1));
+        float dx = (adjusted_k / 2.0) * direction.x * wave_frequency * adjusted_a * wave_PD * cos(wave_dot);
+        float dz = (adjusted_k / 2.0) * direction.y * wave_frequency * adjusted_a * wave_PD * cos(wave_dot);
 
         tangentX.y += dx;
         tangentZ.y += dz;
 
         // Apply domain warping
-        warpedXZ += warpStrength * vec2(dx, dz);
+        vec2 scaledDisplacement = warpStrength * vec2(dx, dz);
+        warpedXZ += clamp(scaledDisplacement, vec2(-0.5), vec2(0.5));
 
         // Decay amplitude and increase wavelength
-        a *= 0.9;
-        wl *= 1.1;
+        a *= 0.95;
+        wl *= 1.05;
     }
 
     tangentX = normalize(tangentX);
     tangentZ = normalize(tangentZ);
 
-    vec3 recalculatedNormal = normalize(cross(tangentZ, tangentX));
+vec3 recalculatedNormal = normalize(cross(tangentZ, tangentX));
+recalculatedNormal = normalize(recalculatedNormal + vec3(0.001)); // Stabilize normal
     fragPosition = position;
     fragNormal = recalculatedNormal;
     gl_Position = projection * view * model * vec4(position, 1.0f);
+}
+
+float hash(float n) {
+    return fract(sin(n) * 43758.5453123);
 }
 
 
