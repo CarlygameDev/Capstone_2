@@ -152,6 +152,12 @@
     <ClInclude Include="scripts\Model.h" />
     <ClInclude Include="scripts\Shader.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\basic.frag" />
+    <None Include="shaders\ocean.vert" />
+    <None Include="shaders\planet.frag" />
+    <None Include="shaders\planet.vert" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
