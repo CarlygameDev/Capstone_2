@@ -10,14 +10,47 @@ uniform mat4 model;
 uniform float time;
 
 float amplitude = 10.0;
-float wave_length = 30.0;
+float wave_length = 40.0;
 float speed = 25.0f;
 int waves = 32;
-float k = 2.5;
+float k = 2;
 
+// Wind parameters
+uniform vec2 windDirection = vec2(1.0, 0.0); // Normalized wind direction
+uniform float windSpread = 0.3;              // Directional variance (0-1)
+
+// Random number generator with seed
+float hash(float n) {
+    return fract(sin(n)*43758.5453);
+}
+
+vec2 poissonDiskDir(int i) {
+    // Poisson disk-style directions with golden angle spiral
+    const float GOLDEN_ANGLE = 2.39996323; // ~137.5 degrees in radians
+    float theta = i * GOLDEN_ANGLE;
+    float r = sqrt(float(i) + 0.5) / sqrt(float(waves));
+    return vec2(cos(theta), sin(theta)) * r;
+}
+
+vec2 calculateWaveDirection(int index) {
+    // Base direction from wind influence
+    vec2 baseDir = normalize(windDirection);
+    
+    // Generate Poisson disk distribution
+    vec2 poissonDir = poissonDiskDir(index);
+    
+    // Random perturbation
+    float randAngle = hash(float(index)*12.9898) * 6.283185 * windSpread;
+    vec2 randOffset = vec2(cos(randAngle), sin(randAngle)) * 0.15;
+    
+    // Combine directions
+    vec2 finalDir = normalize(baseDir + poissonDir + randOffset);
+    
+    return finalDir;
+}
 void main()
 {
-    vec3 position = aPos;
+    vec3 position = vec3(model * vec4(aPos, 1.0));
     vec3 tangentX = vec3(1.0, 0.0, 0.0);
     vec3 tangentZ = vec3(0.0, 0.0, 1.0);
 
@@ -25,13 +58,15 @@ void main()
     float wl = wave_length;
 
     vec2 warpedXZ = position.xz; // Warped domain starts as the original domain
-    float warpStrength = 0.05;    // Softer domain warping
+    float warpStrength = 1;    // Softer domain warping
 
     for (int i = 0; i < waves; i++) {
+
         float phase = float(i) * 0.5;
         float wave_frequency = 2.0 / wl; // Varying wavelength
         float wave_speed = speed * (2.0 / wl) + float(i) * 0.1; // Slight variation
-        vec2 direction = normalize(vec2(cos(phase), sin(phase)));
+       
+         vec2 direction = calculateWaveDirection(i);
 
         // Precompute reusable values using the warped domain
         float wave_dot = dot(warpedXZ, direction) * wave_frequency + time * wave_speed;
@@ -41,7 +76,7 @@ void main()
         float adjusted_k = k + 0.1 * sin(time + float(i)); // Vary k slightly
 
         // Calculate wave displacement
-        float wave_displacement = adjusted_a * pow(max((sin(wave_dot + 1.0) / 2.0), 0.0001), adjusted_k);
+        float wave_displacement = adjusted_a * pow(max((sin(wave_dot + 1.0) / 2.0), 0), adjusted_k);
         position.y += wave_displacement;
 
         // Partial derivatives for tangents
@@ -54,7 +89,7 @@ void main()
 
         // Apply domain warping
         vec2 scaledDisplacement = warpStrength * vec2(dx, dz);
-        warpedXZ += clamp(scaledDisplacement, vec2(-0.5), vec2(0.5));
+        warpedXZ += scaledDisplacement;
 
         // Decay amplitude and increase wavelength
         a *= 0.95;
@@ -63,17 +98,14 @@ void main()
 
     tangentX = normalize(tangentX);
     tangentZ = normalize(tangentZ);
-
+    position=vec3(warpedXZ.x,position.y,warpedXZ.y);
 vec3 recalculatedNormal = normalize(cross(tangentZ, tangentX));
-recalculatedNormal = normalize(recalculatedNormal + vec3(0.001)); // Stabilize normal
     fragPosition = position;
     fragNormal = recalculatedNormal;
     gl_Position = projection * view * model * vec4(position, 1.0f);
 }
 
-float hash(float n) {
-    return fract(sin(n) * 43758.5453123);
-}
+
 
 
 
