@@ -10,7 +10,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <camera.h>
 #include <Model.h>
-
+#define PI 3.14
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -49,8 +49,8 @@ int main()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -81,7 +81,7 @@ int main()
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
-
+ 
     // configure global opengl state
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
@@ -99,12 +99,15 @@ int main()
     // -----------
 
     Model ocean("ocean/ocean.obj");
-
   
-   
-    float scale_factor=1;
+
+     
+    float scale_factor=10;
     modelShader.use();
     modelShader.setFloat("scaleFactor",scale_factor);
+
+  glm:: vec3 sunDirection= glm::vec3(-0.2f, -1.0f, -0.9f);
+  glm:: vec3 sunColor= glm::vec3(1,0,0);
     vector<std::string> faces
     {
        fileFinder::getTexture("mountain_skybox/right.jpg"),
@@ -116,8 +119,12 @@ int main()
     };
     unsigned int skyboxVAO, skyboxVBO, cubemapTexture;
     load_Skybox(&skyboxVAO, &skyboxVBO, &cubemapTexture, faces);
+    skyboxShader.use();
+    skyboxShader.setVec3("sunDirection",sunDirection);
+    skyboxShader.setVec3("sunColor",sunColor);
     // render loop
     // -----------
+   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     while (!glfwWindowShouldClose(window))
     {
         // per-frame time logic
@@ -136,7 +143,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // configure transformation matrices
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
         glm::mat4 view = camera.GetViewMatrix();
        
         modelShader.use();
@@ -144,12 +151,15 @@ int main()
         modelShader.setMat4("projection", projection);
         modelShader.setMat4("view", view);
         modelShader.setVec3("cameraPos",camera.Position);
-        
+    
+       
         glm::mat4 model = glm::mat4(1.0f);
-       // model = glm::scale(model, glm::vec3(scale_factor,0,scale_factor)); // Assign the result of scaling
+        model = glm::scale(model, glm::vec3(scale_factor,0,scale_factor)); // Assign the result of scaling
+       // glBindVertexArray(ocean_buffer);
         modelShader.setMat4("model", model);
+        modelShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
         ocean.Draw(modelShader);
-        
+      //  glBindVertexArray(0);
         
      
         // draw skybox as last
@@ -555,7 +565,7 @@ void renderSphere()
 
         const unsigned int X_SEGMENTS = 64;
         const unsigned int Y_SEGMENTS = 64;
-        const float PI = 3.14159265359f;
+       // const float PI = 3.14159265359f;
         for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
         {
             for (unsigned int y = 0; y <= Y_SEGMENTS; ++y)

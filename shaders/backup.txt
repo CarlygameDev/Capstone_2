@@ -1,0 +1,151 @@
+#version 330 core
+layout (location = 0) in vec3 aPos; // Vertex position
+layout (location = 1) in vec3 Normal; // Vertex position
+
+out vec3 fragNormal;    // Pass the transformed normal to the fragment shader
+out vec3 fragPosition;  // Pass the transformed position to the fragment shader
+out float Amplitude;
+
+uniform mat4 projection;
+uniform mat4 view;
+uniform mat4 model;
+uniform float time;
+
+float amplitude = 1.0;
+float wave_length = 40.0;
+float speed = 25.0f;
+int waves = 16;
+float k = 2;
+
+
+
+
+void main()
+{
+    vec3 position = vec3(model * vec4(aPos, 1.0));
+    vec3 tangentX = vec3(1.0, 0.0, 0.0);
+    vec3 tangentZ = vec3(0.0, 1.0, 0.0);
+
+    float a = amplitude;
+    float wl = wave_length;
+    float warpStrength = 1.0;  // Softer domain warping
+    float amplitudeSum = 0.0;
+    
+    vec2 normal = vec2(0.0);
+
+    for (int i = 0; i < waves; i++) {
+        float phase = float(i) * 0.5;
+        float wave_frequency = 2.0 / wl; // Varying wavelength
+        float wave_speed = speed * (2.0 / wl) + float(i) * 0.1; // Slight variation
+       
+        vec2 direction = vec2(cos(phase), sin(phase));
+
+        // Precompute reusable values using the warped domain
+        float wave_dot = dot(direction, position.xz) * wave_frequency + time * wave_speed;
+
+        // Calculate wave displacement
+        float wave_displacement = 2.0*a * pow(((sin(wave_dot )+ 1.0) / 2.0), k);
+        position.y += wave_displacement;
+
+        // Partial derivatives for tangents
+        float wave_PD = pow(((sin(wave_dot )+ 1.0) / 2.0),k - 1.0);
+        float dx = k*direction.x * wave_frequency * wave_PD * cos(wave_dot);
+        wave_dot = dot(direction.yx, position.zx) * wave_frequency + time * wave_speed;
+       wave_PD = pow(((sin(wave_dot )+ 1.0) / 2.0),k - 1.0);
+       float dz = k*direction.x * wave_frequency * wave_PD * cos(wave_dot);
+        tangentX.z += dx;
+        tangentZ.z += dz;
+
+        // Apply domain warping
+   //     normal += dw;
+        amplitudeSum += a;
+     //   position.xz+=-dw;
+        // Decay amplitude and increase wavelength
+        a *= 0.95;
+        wl *= 1.05;
+    }
+
+    // Normalize the normal
+   // normal /= amplitudeSum;
+    //position/=amplitudeSum;
+    // Correct normal computation using cross product
+    vec3 recalculatedNormal = normalize(cross(tangentZ, tangentX));
+
+    fragPosition = position;
+   fragNormal = recalculatedNormal;
+  //  fragNormal =Normal;
+    Amplitude=amplitudeSum;
+    gl_Position = projection * view * vec4(position, 1.0);
+}
+
+
+
+
+
+
+
+
+-------------------------------------------------------
+
+
+#version 450 core
+
+in vec4 fragFBM;   
+in vec3 fragPosition; 
+
+out vec4 FragColor; 
+
+
+uniform vec3 cameraPos;
+uniform vec3 sunDirection; 
+uniform vec3 sunColor;
+uniform mat3 normalMatrix;
+vec3 tipColor= vec3(0.7f,0.8f,0.9f);
+float tipStrength=0.3;
+vec3 _DiffuseReflectance = vec3(0.0, 0.5, 1.0);
+
+
+
+
+
+void main()
+{
+    vec3 lightDir = normalize(-vec3(-0.2f, -1.0f, -0.9f));  
+    vec3 lightColor = vec3(1); 
+
+    float height=0;
+    vec3 normal=vec3(0);
+    vec3 oceanColor = vec3(0.0, 0.3, 0.7); // Slightly darker to compensate
+    float shininess = 64.0; // Lowered for softer specular
+    height = fragFBM.w;
+	normal = fragFBM.xyz;
+normal= vec3(normal.x,-normal.y,normal.z);
+    // Normalize inputs
+     normal = normalize(normal);
+    vec3 viewDir = normalize(cameraPos - fragPosition);
+    
+    // Ambient lighting
+    vec3 ambient = 0.15 * oceanColor * lightColor;
+
+      // Diffuse shading
+    float ndotl = max(dot(lightDir, normal), 0.0);
+    vec3 diffuseReflectance = _DiffuseReflectance / 3.14159; 
+    vec3 diffuse = lightColor * ndotl ;
+
+    // Specular reflection
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float spec = pow(dot(normal, halfwayDir), shininess);
+    vec3 specular = spec * lightColor ; // Reduce intensity
+
+    // Fresnel Reflection (Schlick Approximation)
+    float F0 = 0.02;  
+    float fresnelFactor = F0 + (1.0 - F0) * pow(1.0 - max(dot(viewDir, normal), 0.0), 5.0);
+    vec3 fresnelReflection = fresnelFactor * lightColor * 0.5; // Reduce impact
+
+    vec3 foam = tipColor* pow(height,tipStrength);
+    // Combine components
+    vec3 finalColor = ambient + diffuse + specular + fresnelReflection+foam;
+    finalColor = mix(finalColor, oceanColor, 0.5); // Blend with base color
+
+    FragColor = vec4(finalColor, 1.0);
+}

@@ -1,81 +1,86 @@
 ﻿#version 330 core
 layout (location = 0) in vec3 aPos; // Vertex position
+layout (location = 1) in vec3 Normal; // Vertex position
 
-out vec3 fragNormal;    // Pass the transformed normal to the fragment shader
+out vec4 fragFBM;    // Pass the transformed normal to the fragment shader
 out vec3 fragPosition;  // Pass the transformed position to the fragment shader
+
 
 uniform mat4 projection;
 uniform mat4 view;
 uniform mat4 model;
 uniform float time;
 
-float amplitude = 10.0;
-float wave_length = 40.0;
+float amplitude = 2.0;
+float wave_length = 20.0;
 float speed = 25.0f;
 int waves = 32;
-float k = 2;
-
+float k = 2.5;
+float warpStrength=0.1f;
 
 
 
 void main()
 {
-    vec3 position = vec3(model * vec4(aPos, 1.0));
-    vec3 tangentX = vec3(1.0, 0.0, 0.0);
-    vec3 tangentZ = vec3(0.0, 0.0, 1.0);
+    // Initialize in world space
+    vec3 position = vec3(model*vec4(aPos,1));
+    float amplitudeSum = 0.0;
+    
+    // Tangent vectors for normal calculation
+    vec3 tangentX = vec3(1.0, 0.0, 0.0); // Initial X tangent
+    vec3 tangentZ = vec3(0.0, 0.0, 1.0); // Initial Z tangent
 
-    float a = amplitude;
-    float wl = wave_length;
-
+    // Wave parameters (decay each iteration)
+    float currentAmplitude = amplitude;
+    float currentWavelength = wave_length;
+    float h=0f;
    
-    float warpStrength = 1;    // Softer domain warping
-    	float amplitudeSum = 0.0f;
- 
-    for (int i = 0; i < waves; i++) {
-
+    for(int i = 0; i < waves; i++) {
+        // Calculate wave direction and frequency
         float phase = float(i) * 0.5;
-        float wave_frequency = 2.0 / wl; // Varying wavelength
-        float wave_speed = speed * (2.0 / wl) + float(i) * 0.1; // Slight variation
-       
-         vec2 direction = vec2(cos(phase),sin(phase));
+        vec2 direction = normalize(vec2(cos(phase), sin(phase)));
+        float wave_frequency = 2.0 / currentWavelength;
+        float wave_speed = speed * wave_frequency + float(i)*0.1;
 
-        // Precompute reusable values using the warped domain
+        // Wave equation components
         float wave_dot = dot(direction, position.xz) * wave_frequency + time * wave_speed;
+        float sinWave = sin(wave_dot);
+        float cosWave = cos(wave_dot);
 
-        
-   
+        // Height displacement (Equation 8a)
+        float waveHeight = 2.0 * currentAmplitude * pow((sinWave + 1.0)/2.0, k);
+        h += waveHeight;
 
-        // Calculate wave displacement
-        float wave_displacement = a * pow(max((sin(wave_dot + 1.0) / 2.0), 0), k);
-       
-       position.y += wave_displacement;
-    
+        // Partial derivatives (Equation 8b)
+        float partialDerivativeBase = pow((sinWave + 1.0)/2.0, k - 1.0);
+        float dx = k * wave_frequency * partialDerivativeBase * cosWave;
 
-        // Partial derivatives for tangents
-        float wave_PD = pow(max((sin(wave_dot + 1.0) / 2.0), 0.0001), max(k - 1.0, 0.1));
-        float dx = k  * direction.x * wave_frequency * a * wave_PD * cos(wave_dot);
-        float dz = k  * direction.y * wave_frequency * a * wave_PD * cos(wave_dot);
 
-        tangentX.y += dx;
-        tangentZ.y += dz;
-     
-        // Apply domain warping
-        vec2 scaledDisplacement = warpStrength * vec2(dx, dz);
-    
-        amplitudeSum+=a;
-        // Decay amplitude and increase wavelength
-        a *= 0.95;
-        wl *= 1.05;
+        // Domain warping (applied AFTER derivative calculation)
+        vec2 warpOffset = direction*dx * warpStrength * currentAmplitude;
+        tangentX.y+= warpOffset.x;
+        tangentZ.y+=warpOffset.y;
+        position.xz += warpOffset;
+
+        // Prepare for next iteration
+        currentAmplitude *= 0.9;    // Amplitude decay
+        currentWavelength *= 1.1;   // Wavelength increase
+        amplitudeSum += currentAmplitude;
     }
-
-    tangentX = normalize(tangentX);
-    tangentZ = normalize(tangentZ);
-
-vec3 recalculatedNormal = -normalize(cross(tangentX, tangentZ));
-    fragPosition = position;
-    fragNormal = recalculatedNormal;
-    gl_Position = projection * view  * vec4(position, 1.0f);
+ 
+    vec3 vertexFBM=vec3(0,h,0);
+    
+    vec4 finalPosition=model*vec4(aPos,1);
+    finalPosition.xyz+=vertexFBM;
+   vec3 n=cross(tangentX,tangentZ);
+    fragFBM=normalize(vec4(n,h/amplitudeSum));
+    // Output transformed position
+    fragPosition = finalPosition.xyz;
+    gl_Position = projection * view *finalPosition;
 }
+
+
+
 
 
 
