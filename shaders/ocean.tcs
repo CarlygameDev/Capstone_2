@@ -1,47 +1,45 @@
 #version 410 core
 
-layout(vertices=4) out;
+layout(vertices = 3) out; // Tessellating triangles
 
-uniform mat4 model;
-uniform mat4 view;
-
-in vec2 TexCoord[];
-out vec2 TextureCoord[];
+uniform vec3 cameraPos;
+uniform float maxTessLevel = 80.0;  // Maximum tessellation level (clamped for stability)
+uniform float minTessLevel = 2.0;   // Minimum safe tessellation level
+uniform float minDistance = 100.0;   // Distance where max tessellation applies
+uniform float maxDistance = 2500.0;  // Distance where tessellation is minimal
 
 void main()
 {
-    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-    TextureCoord[gl_InvocationID] = TexCoord[gl_InvocationID];
-
-    if(gl_InvocationID == 0)
+    if (gl_InvocationID == 0) // Only run once per patch
     {
-        const int MIN_TESS_LEVEL = 4;
-        const int MAX_TESS_LEVEL = 64;
-        const float MIN_DISTANCE = 20;
-        const float MAX_DISTANCE = 800;
+        // Compute the closest distance of the patch to the camera
+        float distance0 = length(cameraPos - gl_in[0].gl_Position.xyz);
+        float distance1 = length(cameraPos - gl_in[1].gl_Position.xyz);
+        float distance2 = length(cameraPos - gl_in[2].gl_Position.xyz);
 
-        vec4 eyeSpacePos00 = view * model * gl_in[0].gl_Position;
-        vec4 eyeSpacePos01 = view * model * gl_in[1].gl_Position;
-        vec4 eyeSpacePos10 = view * model * gl_in[2].gl_Position;
-        vec4 eyeSpacePos11 = view * model * gl_in[3].gl_Position;
+        float minDist = min(distance0, min(distance1, distance2));
 
-        // "distance" from camera scaled between 0 and 1
-        float distance00 = clamp( (abs(eyeSpacePos00.z) - MIN_DISTANCE) / (MAX_DISTANCE-MIN_DISTANCE), 0.0, 1.0 );
-        float distance01 = clamp( (abs(eyeSpacePos01.z) - MIN_DISTANCE) / (MAX_DISTANCE-MIN_DISTANCE), 0.0, 1.0 );
-        float distance10 = clamp( (abs(eyeSpacePos10.z) - MIN_DISTANCE) / (MAX_DISTANCE-MIN_DISTANCE), 0.0, 1.0 );
-        float distance11 = clamp( (abs(eyeSpacePos11.z) - MIN_DISTANCE) / (MAX_DISTANCE-MIN_DISTANCE), 0.0, 1.0 );
+        // **Smooth Adaptive Tessellation** using an exponential function
+        float tessFactor = clamp((minDist - minDistance) / (maxDistance - minDistance), 0.0, 1.0);
+        float tessLevel = mix(maxTessLevel, minTessLevel, pow(tessFactor, 1.5)); // Exponential smoothing
 
-        float tessLevel0 = mix( MAX_TESS_LEVEL, MIN_TESS_LEVEL, min(distance10, distance00) );
-        float tessLevel1 = mix( MAX_TESS_LEVEL, MIN_TESS_LEVEL, min(distance00, distance01) );
-        float tessLevel2 = mix( MAX_TESS_LEVEL, MIN_TESS_LEVEL, min(distance01, distance11) );
-        float tessLevel3 = mix( MAX_TESS_LEVEL, MIN_TESS_LEVEL, min(distance11, distance10) );
+       // Compute tessellation levels for each vertex
+float tessLevel0 = mix(maxTessLevel, 1.0, clamp((distance0 - minDistance) / (maxDistance - minDistance), 0.0, 1.0));
+float tessLevel1 = mix(maxTessLevel, 1.0, clamp((distance1 - minDistance) / (maxDistance - minDistance), 0.0, 1.0));
+float tessLevel2 = mix(maxTessLevel, 1.0, clamp((distance2 - minDistance) / (maxDistance - minDistance), 0.0, 1.0));
 
-        gl_TessLevelOuter[0] = tessLevel0;
-        gl_TessLevelOuter[1] = tessLevel1;
-        gl_TessLevelOuter[2] = tessLevel2;
-        gl_TessLevelOuter[3] = tessLevel3;
+// Pick the **minimum** tessellation level for shared edges
+gl_TessLevelOuter[0] = min(tessLevel1, tessLevel2);
+gl_TessLevelOuter[1] = min(tessLevel2, tessLevel0);
+gl_TessLevelOuter[2] = min(tessLevel0, tessLevel1);
+gl_TessLevelInner[0] = (gl_TessLevelOuter[0] + gl_TessLevelOuter[1] + gl_TessLevelOuter[2]) / 3.0;
 
-        gl_TessLevelInner[0] = max(tessLevel1, tessLevel3);
-        gl_TessLevelInner[1] = max(tessLevel0, tessLevel2);
     }
+
+    // Pass vertex positions to the evaluation shader
+    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
 }
+
+
+
+

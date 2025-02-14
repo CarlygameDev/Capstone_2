@@ -29,6 +29,7 @@ public:
             if (geometryPath != nullptr) geometryCode = loadShaderCode(geometryPath);
 
             if (TEvaluationPath != nullptr) {
+                Tesselation = true;
                 tEvaluationCode = loadShaderCode(TEvaluationPath);
                 // Only load the TCS if the TES is present
                 if (TControlPath != nullptr) {
@@ -69,7 +70,9 @@ public:
     }
 
 
-    
+    const bool hasTesselation() {
+        return Tesselation;
+    }
     // activate the shader
     // ------------------------------------------------------------------------
     void use()
@@ -116,6 +119,7 @@ public:
         glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
     }
 private:
+    bool Tesselation=false;
     // utility function for checking shader compilation/linking errors.
     // ------------------------------------------------------------------------
     void checkCompileErrors(unsigned int shader, std::string type, const std::string& name)

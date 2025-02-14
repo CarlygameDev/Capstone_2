@@ -93,21 +93,24 @@ int main()
     // build and compile shaders
     // -------------------------
  
-    Shader modelShader("ocean.vert", "basic.frag");
+    Shader modelShader("ocean.vert", "basic.frag",nullptr,"ocean.tcs","ocean.tes");
     Shader skyboxShader("skybox.vert", "skybox.frag");
     // load models
     // -----------
 
     Model ocean("ocean/ocean.obj");
   
-
+   
      
-    float scale_factor=10;
+    float scale_factor=100;
     modelShader.use();
     modelShader.setFloat("scaleFactor",scale_factor);
+    modelShader.setInt("skybox",5);
 
   glm:: vec3 sunDirection= glm::vec3(-0.2f, -1.0f, -0.9f);
-  glm:: vec3 sunColor= glm::vec3(1,0,0);
+  glm::vec3 sunColor = glm::vec3(1.0, 0.7, 0.4);
+  modelShader.setVec3("sunColor", sunColor);
+  modelShader.setVec3("sunDirection", sunDirection);
     vector<std::string> faces
     {
        fileFinder::getTexture("mountain_skybox/right.jpg"),
@@ -122,9 +125,11 @@ int main()
     skyboxShader.use();
     skyboxShader.setVec3("sunDirection",sunDirection);
     skyboxShader.setVec3("sunColor",sunColor);
+    glPatchParameteri(GL_PATCH_VERTICES, 3);  // If using triangles (3 vertices per patch)
+
     // render loop
     // -----------
-   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+  //  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     while (!glfwWindowShouldClose(window))
     {
         // per-frame time logic
@@ -145,7 +150,7 @@ int main()
         // configure transformation matrices
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-       
+     
         modelShader.use();
         modelShader.setFloat("time",currentFrame);
         modelShader.setMat4("projection", projection);
@@ -158,6 +163,8 @@ int main()
        // glBindVertexArray(ocean_buffer);
         modelShader.setMat4("model", model);
         modelShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
         ocean.Draw(modelShader);
       //  glBindVertexArray(0);
         
@@ -182,7 +189,7 @@ int main()
         glfwPollEvents();
     }
 
-
+   
 
     // optional: de-allocate all resources once they've outlived their purpose:
     // ------------------------------------------------------------------------
