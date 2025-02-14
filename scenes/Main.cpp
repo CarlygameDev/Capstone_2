@@ -10,7 +10,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <camera.h>
 #include <Model.h>
-
+#define PI 3.14
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -28,7 +28,7 @@ void renderCube();
 void renderQuad();
 void renderSphere();
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 50.0f, 0.0f));
 
 bool firstMouse = true;
 bool shadows = true;
@@ -49,8 +49,8 @@ int main()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -81,7 +81,7 @@ int main()
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
-
+ 
     // configure global opengl state
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
@@ -92,92 +92,44 @@ int main()
 
     // build and compile shaders
     // -------------------------
-    Shader asteroidShader("asteroid.vert", "asteroid.frag");
-    Shader planetShader("planet.vert", "planet.frag");
+ 
+    Shader modelShader("ocean.vert", "basic.frag",nullptr,"ocean.tcs","ocean.tes");
     Shader skyboxShader("skybox.vert", "skybox.frag");
     // load models
     // -----------
-    Model rock("rock/rock.obj");
-    Model planet("planet/planet.obj");
 
-    // generate a large list of semi-random model transformation matrices
-    // ------------------------------------------------------------------
-    unsigned int amount = 10000;
-    glm::mat4* modelMatrices;
-    modelMatrices = new glm::mat4[amount];
-    srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
-    float radius = 150.0;
-    float offset = 25.0f;
-    for (unsigned int i = 0; i < amount; i++)
-    {
-        glm::mat4 model = glm::mat4(1.0f);
-        // 1. translation: displace along circle with 'radius' in range [-offset, offset]
-        float angle = (float)i / (float)amount * 360.0f;
-        float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float x = sin(angle) * radius + displacement;
-        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float y = displacement * 0.4f; // keep height of asteroid field smaller compared to width of x and z
-        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float z = cos(angle) * radius + displacement;
-        model = glm::translate(model, glm::vec3(x, y, z));
+    Model ocean("ocean/ocean.obj");
+  
+   
+     
+    float scale_factor=100;
+    modelShader.use();
+    modelShader.setFloat("scaleFactor",scale_factor);
+    modelShader.setInt("skybox",5);
 
-        // 2. scale: Scale between 0.05 and 0.25f
-        float scale = static_cast<float>((rand() % 20) / 100.0 + 0.05);
-        model = glm::scale(model, glm::vec3(scale));
-
-        // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
-        float rotAngle = static_cast<float>((rand() % 360));
-        model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
-
-        // 4. now add to list of matrices
-        modelMatrices[i] = model;
-    }
-
-    // configure instanced array
-    // -------------------------
-    unsigned int buffer;
-    glGenBuffers(1, &buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, amount * sizeof(glm::mat4), &modelMatrices[0], GL_STATIC_DRAW);
-
-    // set transformation matrices as an instance vertex attribute (with divisor 1)
-    // note: we're cheating a little by taking the, now publicly declared, VAO of the model's mesh(es) and adding new vertexAttribPointers
-    // normally you'd want to do this in a more organized fashion, but for learning purposes this will do.
-    // -----------------------------------------------------------------------------------------------------------------------------------
-    for (unsigned int i = 0; i < rock.meshes.size(); i++)
-    {
-        unsigned int VAO = rock.meshes[i].VAO;
-        glBindVertexArray(VAO);
-        // set attribute pointers for matrix (4 times vec4)
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
-        glEnableVertexAttribArray(5);
-        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
-        glEnableVertexAttribArray(6);
-        glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
-
-        glVertexAttribDivisor(3, 1);
-        glVertexAttribDivisor(4, 1);
-        glVertexAttribDivisor(5, 1);
-        glVertexAttribDivisor(6, 1);
-
-        glBindVertexArray(0);
-    }
+  glm:: vec3 sunDirection= glm::vec3(-0.2f, -1.0f, -0.9f);
+  glm::vec3 sunColor = glm::vec3(1.0, 0.7, 0.4);
+  modelShader.setVec3("sunColor", sunColor);
+  modelShader.setVec3("sunDirection", sunDirection);
     vector<std::string> faces
     {
-       fileFinder::getTexture("space_skybox/right.png"),
-      fileFinder::getTexture("space_skybox/left.png"),
-       fileFinder::getTexture("space_skybox/top.png"),
-        fileFinder::getTexture("space_skybox/bottom.png"),
-        fileFinder::getTexture("space_skybox/front.png"),
-        fileFinder::getTexture("space_skybox/back.png"),
+       fileFinder::getTexture("mountain_skybox/right.jpg"),
+      fileFinder::getTexture("mountain_skybox/left.jpg"),
+       fileFinder::getTexture("mountain_skybox/top.jpg"),
+        fileFinder::getTexture("mountain_skybox/bottom.jpg"),
+        fileFinder::getTexture("mountain_skybox/front.jpg"),
+        fileFinder::getTexture("mountain_skybox/back.jpg"),
     };
     unsigned int skyboxVAO, skyboxVBO, cubemapTexture;
     load_Skybox(&skyboxVAO, &skyboxVBO, &cubemapTexture, faces);
+    skyboxShader.use();
+    skyboxShader.setVec3("sunDirection",sunDirection);
+    skyboxShader.setVec3("sunColor",sunColor);
+    glPatchParameteri(GL_PATCH_VERTICES, 3);  // If using triangles (3 vertices per patch)
+
     // render loop
     // -----------
+  //  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     while (!glfwWindowShouldClose(window))
     {
         // per-frame time logic
@@ -196,58 +148,28 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // configure transformation matrices
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-        asteroidShader.use();
-        asteroidShader.setMat4("projection", projection);
-        asteroidShader.setMat4("view", view);
-        planetShader.use();
-        planetShader.setMat4("projection", projection);
-        planetShader.setMat4("view", view);
-
-        // draw planet
+     
+        modelShader.use();
+        modelShader.setFloat("time",currentFrame);
+        modelShader.setMat4("projection", projection);
+        modelShader.setMat4("view", view);
+        modelShader.setVec3("cameraPos",camera.Position);
+    
+       
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, -3.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(4.0f, 4.0f, 4.0f));
-        float rotAngle = static_cast<float>(currentFrame * 0.1f);
-        model = glm::rotate(model, rotAngle, glm::vec3(0.0f, 1.0f, 0.2f));
-        planetShader.setMat4("model", model);
-        planet.Draw(planetShader);
-
-        // draw meteorites
-        asteroidShader.use();
-        asteroidShader.setInt("texture_diffuse1", 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, rock.textures_loaded[0].id); // note: we also made the textures_loaded vector public (instead of private) from the model class.
-        // update asteroid positions
-        // update asteroid positions
-
-          // Update asteroid positions
-        float rotationSpeed = 0.01f; // Adjust speed as necessary
-        for (unsigned int i = 0; i < amount; i++)
-        {
-            float angle = (float)i / (float)amount * 360.0f + currentFrame * rotationSpeed;
-            float radius = glm::length(glm::vec2(modelMatrices[i][3][0], modelMatrices[i][3][2]));
-            float x = sin(angle) * radius;
-            float z = cos(angle) * radius;
-            modelMatrices[i][3][0] = x;
-            modelMatrices[i][3][2] = z;
-            rotAngle = 0.01f;
-            modelMatrices[i] = glm::rotate(modelMatrices[i], rotAngle, glm::vec3(0.8f, 0.2f, 0.6f));
-        }
-        glBindBuffer(GL_ARRAY_BUFFER, buffer);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, amount * sizeof(glm::mat4), &modelMatrices[0]);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        for (unsigned int i = 0; i < rock.meshes.size(); i++)
-        {
-            glBindVertexArray(rock.meshes[i].VAO);
-            glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(rock.meshes[i].indices.size()), GL_UNSIGNED_INT, 0, amount);
-            glBindVertexArray(0);
-        }
-        // update buffer data
-
-        // time to fuck shit up
-       // draw skybox as last
+        model = glm::scale(model, glm::vec3(scale_factor,0,scale_factor)); // Assign the result of scaling
+       // glBindVertexArray(ocean_buffer);
+        modelShader.setMat4("model", model);
+        modelShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        ocean.Draw(modelShader);
+      //  glBindVertexArray(0);
+        
+     
+        // draw skybox as last
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
         skyboxShader.use();
         view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
@@ -260,13 +182,14 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
         glDepthFunc(GL_LESS); // set depth function back to default
+  
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-
+   
 
     // optional: de-allocate all resources once they've outlived their purpose:
     // ------------------------------------------------------------------------
@@ -649,7 +572,7 @@ void renderSphere()
 
         const unsigned int X_SEGMENTS = 64;
         const unsigned int Y_SEGMENTS = 64;
-        const float PI = 3.14159265359f;
+       // const float PI = 3.14159265359f;
         for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
         {
             for (unsigned int y = 0; y <= Y_SEGMENTS; ++y)
@@ -724,3 +647,8 @@ void renderSphere()
     glBindVertexArray(sphereVAO);
     glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
 }
+
+
+
+
+
