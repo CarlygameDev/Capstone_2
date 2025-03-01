@@ -9,11 +9,11 @@ uniform mat4 view;
 uniform mat4 model;
 uniform float time;
 
-float amplitude = 2.0;
+float amplitude = 4.0;
 float wave_length = 20.0;
-float speed = 20.0f;
+float speed = 30.0f;
 int waves = 32;
-float k = 2;
+float k = 1.5;
 float warpStrength = 0.1f;
 
 void main()
@@ -40,8 +40,8 @@ void main()
         float wave_speed = speed * wave_frequency + float(i) * 0.1;
 
         float wave_dot = dot(direction, position.xz) * wave_frequency + time * wave_speed;
-        float sinWave = sin(wave_dot);
-        float cosWave = cos(wave_dot);
+        float sinWave = (sin(wave_dot)+1)*0.5;
+        float cosWave = (cos(wave_dot)+1)*0.5;
 
         float waveHeight = 2.0 * currentAmplitude * pow((sinWave + 1.0) / 2.0, k);
         h += waveHeight;
@@ -52,7 +52,7 @@ void main()
         vec2 warpOffset = direction * dx * warpStrength * currentAmplitude;
         tangentX.y += warpOffset.x;
         tangentZ.y += warpOffset.y;
-        position.xz -= warpOffset;
+        position.xz += warpOffset;
 
         currentAmplitude *= 0.85;
         currentWavelength *= 1.2;

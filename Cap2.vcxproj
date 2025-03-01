@@ -154,7 +154,10 @@
     <ClInclude Include="scripts\Shader.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\afu.cs" />
     <None Include="shaders\basic.frag" />
+    <None Include="shaders\fft.cps" />
+    <None Include="shaders\time_evolution.cps" />
     <None Include="shaders\ocean.tcs" />
     <None Include="shaders\ocean.tes" />
     <None Include="shaders\ocean.vert" />
@@ -162,6 +165,9 @@
     <None Include="shaders\planet.vert" />
     <None Include="shaders\skybox.frag" />
     <None Include="shaders\skybox.vert" />
+    <None Include="shaders\vTexture.frag" />
+    <None Include="shaders\Vtexture.vert" />
+    <None Include="shaders\waveHeight.cps" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="shaders\backup.txt" />
