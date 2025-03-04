@@ -91,7 +91,7 @@ int main()
     // build and compile shaders
     // -------------------------
 
-    Shader modelShader("vTexture.vert", "vTexture.frag");
+    Shader textureLoad("vTexture.vert", "vTexture.frag");
     Shader skyboxShader("skybox.vert", "skybox.frag");
     // load models
     // -----------
@@ -101,14 +101,14 @@ int main()
 
 
     float scale_factor = 100;
-    modelShader.use();
-    modelShader.setFloat("scaleFactor", scale_factor);
-    modelShader.setInt("skybox", 5);
-
+    textureLoad.use();
+    textureLoad.setFloat("scaleFactor", scale_factor);
+    textureLoad.setInt("skybox", 5);
+    glm::vec3 oceanColor = glm::vec3(0.0, 0.3, 0.7);
     glm::vec3 sunDirection = glm::vec3(-0.2f, -1.0f, -0.9f);
     glm::vec3 sunColor = glm::vec3(1.0, 0.7, 0.4);
-    modelShader.setVec3("sunColor", sunColor);
-    modelShader.setVec3("sunDirection", sunDirection);
+    textureLoad.setVec3("sunColor", sunColor);
+    textureLoad.setVec3("sunDirection", sunDirection);
     vector<std::string> faces
     {
        fileFinder::getTexture("mountain_skybox/right.jpg"),
@@ -127,7 +127,7 @@ int main()
 
 
 
-    GLuint waveTexture, displacementTexture,heightMap;
+    GLuint waveTexture, displacementTexture,heightMap,hPassTexture;
     const int textureSize = 512;
 
     // Create texture for storing wave spectrum
@@ -146,7 +146,7 @@ int main()
     ComputeShader waveHeight("waveHeight.cps");
     waveHeight.use();
     glBindImageTexture(0, waveTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-    glDispatchCompute(textureSize / 16, textureSize / 16, 1);
+    glDispatchCompute(textureSize/16 , textureSize/16 , 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     glUseProgram(0);
@@ -162,8 +162,31 @@ int main()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    int domainSize = 512;
     ComputeShader timeEvolutionShader ("time_evolution.cps");
+    timeEvolutionShader.use();
+    timeEvolutionShader.setFloat("domainSize",domainSize);
     ComputeShader fft("fft.cps");
+    fft.use();
+    fft.setInt("uSize", textureSize);
+    glGenTextures(1, &hPassTexture);
+    glBindTexture(GL_TEXTURE_2D, hPassTexture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, textureSize, textureSize);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    Shader oceanShader("oceanFFT.vert", "oceanFFT.frag");
+    oceanShader.use();
+    float normFactor = 1.0f /textureSize;
+    oceanShader.setFloat("heightScale",5);
+    oceanShader.setFloat("normFactor",normFactor);
+    oceanShader.setVec3("lightDir",sunDirection);
+    oceanShader.setVec3("baseColor", oceanColor);
+    oceanShader.setInt("heightMap",0);
+    ComputeShader normalizeFFT("fftNormalize.cps");
+    normalizeFFT.use();
+    normalizeFFT.setFloat("normFactor", normFactor);
+    normalizeFFT.setInt("textureSize", textureSize);
     // render loop
     // -----------
   //  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -187,19 +210,36 @@ int main()
         glBindImageTexture(0, waveTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
         glBindImageTexture(1, displacementTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
         glDispatchCompute(textureSize / 16, textureSize / 16, 1);
+
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
         
-        // First pass: FFT along the X-axis
-        glBindImageTexture(0, displacementTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
-        glBindImageTexture(1, heightMap, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-        fft.setInt("direction", 1); // Forward FFT
-        glDispatchCompute(textureSize / 16, textureSize / 16, 1);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        int log2N = (int)log2(textureSize); 
+        // After time evolution, run inverse FFT:
+        for (int stage = 0; stage < log2N; stage++) {
+            // ---- Horizontal Pass ----
+            fft.use();
+            fft.setInt("uStage", stage);
+            fft.setInt("uDirection", 0);  // 0 = horizontal
 
-        // Second pass: FFT along the Y-axis
-        glBindImageTexture(0, heightMap, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
-        glBindImageTexture(1, displacementTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-        fft.setInt("direction", -1); // Forward FFT again (now along Y)
+            glBindImageTexture(0, displacementTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+            glBindImageTexture(1, hPassTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+            glDispatchCompute(textureSize / 16, textureSize / 16, 1);
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            // ---- Vertical Pass ----
+            fft.use();
+            fft.setInt("uStage", stage);
+            fft.setInt("uDirection", 1);  // 1 = vertical
+
+            glBindImageTexture(0, hPassTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+            glBindImageTexture(1, displacementTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);  // Fixed output
+
+            glDispatchCompute(textureSize / 16, textureSize / 16, 1);
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        }
+       
+        normalizeFFT.use();
+       glBindImageTexture(0, displacementTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
         glDispatchCompute(textureSize / 16, textureSize / 16, 1);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -210,21 +250,25 @@ int main()
         // configure transformation matrices
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-
-        modelShader.use();
-        modelShader.setMat4("model", glm::mat4(1));
-        modelShader.setMat4("projection", projection);
-        modelShader.setMat4("view", view);
-
-        // Assuming you have a texture loaded and bound to GL_TEXTURE0
-        glActiveTexture(GL_TEXTURE0);
+glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D,displacementTexture);
+        textureLoad.use();
+        textureLoad.setMat4("model", glm::mat4(1));
+        textureLoad.setMat4("projection", projection);
+        textureLoad.setMat4("view", view);
 
-
-        ocean.Draw(modelShader);
+ocean.Draw(oceanShader);
+        // Assuming you have a texture loaded and bound to GL_TEXTURE0
+        
+ 
+        oceanShader.use();
+        oceanShader.setMat4("model", glm::mat4(1));
+        oceanShader.setMat4("projection", projection);
+        oceanShader.setMat4("view", view);
+       
         //renderCube();
 
-
+  
 
 
         // draw skybox as last

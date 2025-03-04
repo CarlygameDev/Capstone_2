@@ -1,51 +1,47 @@
-#version 430
-
+﻿#version 430
 layout(local_size_x = 16, local_size_y = 16) in;
+layout(rgba32f, binding = 0) uniform image2D spectrumTex;   // Input: h₀(k)
+layout(rgba32f, binding = 1) uniform image2D evolvedTex;     // Output: h(k, t)
 
-layout(rgba32f, binding = 0) uniform image2D waveTexture;  // Initial wave spectrum
-layout(rgba32f, binding = 1) uniform image2D displacementTexture;  // Output time-evolved waves
-
-uniform float time;  // Simulation time
+uniform float time;          // Elapsed time in seconds
+uniform float domainSize;    // Physical size of the ocean patch (meters)
 
 const float PI = 3.14159265359;
-const float G = 9.81;  // Gravity constant
+const float G = 9.81;
 
-void main()
-{
-    ivec2 texSize = imageSize(waveTexture);
+// Complex multiplication helper
+vec2 complex_mult(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-
-    if (coord.x >= texSize.x || coord.y >= texSize.y) return;
-
+    ivec2 texSize = imageSize(spectrumTex);
+    int N = texSize.x;
+    
+    // Calculate wavevector k (matches spectrum generation)
     vec2 uv = vec2(coord) / vec2(texSize);
+    vec2 k = (uv - 0.5) * 2.0 * PI / (domainSize / texSize.x);
     
-    // Convert UV to wavevector
-    float domainSize = 100.0;
-    vec2 k = (uv - 0.5) * vec2(texSize) * 2.0 * PI / domainSize;
+    // Fetch initial spectrum value h₀(k)
+    vec4 h0 = imageLoad(spectrumTex, coord);
+    
+    // Calculate angular frequency ω = sqrt(g * |k|)
     float kLen = length(k);
-
-    if (kLen < 1e-6)
-    {
-        imageStore(displacementTexture, coord, vec4(0.0));
-        return;
-    }
-
-    // Get the initial spectrum h0(k)
-    vec4 h0 = imageLoad(waveTexture, coord);
-    vec2 h0_k = h0.rg;  // Real and imaginary parts of h0(k)
-    
-    // Compute dispersion relation: omega(k) = sqrt(g * k)
     float omega = sqrt(G * kLen);
-
-    // Compute phase shift
-    float phase = omega * time;
-    float cosPhase = cos(phase);
-    float sinPhase = sin(phase);
-
-    // Compute h(k, t) using Euler's formula: e^(i?) = cos(?) + i sin(?)
-    vec2 h_t = h0_k * vec2(cosPhase, sinPhase);  // Forward traveling wave
-    vec2 h_t_conj = h0_k * vec2(cosPhase, -sinPhase);  // Backward traveling wave
-
-    // Store the real and imaginary components of h(k, t)
-    imageStore(displacementTexture, coord, vec4(h_t + h_t_conj, 0.0, 0.0));
+    
+    // Calculate mirrored coordinate for -k
+    ivec2 mirroredCoord = ivec2(N - 1 - coord.x, N - 1 - coord.y);
+    vec4 h0_mirrored = imageLoad(spectrumTex, mirroredCoord);
+    
+    // Time evolution factors
+    vec2 exp_pos = vec2(cos(omega * time), sin(omega * time));  // e^(iωt)
+    vec2 exp_neg = vec2(exp_pos.x, -exp_pos.y);                 // e^(-iωt)
+    
+    // Compute h(k, t) = h₀(k)e^(iωt) + h₀*(-k)e^(-iωt)
+    vec2 term1 = complex_mult(h0.xy, exp_pos);
+    vec2 term2 = complex_mult(vec2(h0_mirrored.x, -h0_mirrored.y), exp_neg);
+    vec2 h_t = term1 + term2;
+    
+    imageStore(evolvedTex, coord, vec4(h_t, 0.0, 0.0));
 }

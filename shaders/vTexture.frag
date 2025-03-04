@@ -12,4 +12,5 @@ uniform sampler2D texture1;
 void main() {
     float height = texture(texture1, TexCoord).r;  
     FragColor = vec4(vec3(height), 1.0);  // Convert to grayscale
+ //  FragColor =texture(texture1, TexCoord);
 }

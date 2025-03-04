@@ -157,6 +157,9 @@
     <None Include="shaders\afu.cs" />
     <None Include="shaders\basic.frag" />
     <None Include="shaders\fft.cps" />
+    <None Include="shaders\fftNormalize.cps" />
+    <None Include="shaders\oceanFFT.frag" />
+    <None Include="shaders\oceanFFT.vert" />
     <None Include="shaders\time_evolution.cps" />
     <None Include="shaders\ocean.tcs" />
     <None Include="shaders\ocean.tes" />

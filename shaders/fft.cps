@@ -1,104 +1,75 @@
 #version 430
 
-layout(local_size_x = 16, local_size_y = 16) in;
+// Workgroup size; adjust as needed.
+layout (local_size_x = 16, local_size_y = 16) in;
 
-layout(rgba32f, binding = 0) uniform image2D inputTexture;
-layout(rgba32f, binding = 1) uniform image2D outputTexture;
+// Input texture holding complex values stored in the xy channels.
+layout (rgba32f, binding = 0) uniform image2D uInput;
+// Output texture for writing the FFT pass results.
+layout (rgba32f, binding = 1) uniform image2D uOutput;
 
-uniform int N;
-uniform int direction;  // -1 for IFFT, 1 for FFT
-
-shared vec4 sharedMem[16][16];
+// Uniforms to control the FFT pass.
+uniform int uStage;      // Current FFT stage (0 to log2(N)-1)
+uniform int uDirection;  // 0 = horizontal pass, 1 = vertical pass
+uniform int uSize;       // The FFT size (assumed square and power-of-two)
 
 const float PI = 3.14159265359;
 
-void bitReversePermute(inout int index, int log2N) {
-    index = ((index & 0xAAAA) >> 1) | ((index & 0x5555) << 1);
-    index = ((index & 0xCCCC) >> 2) | ((index & 0x3333) << 2);
-    index = ((index & 0xF0F0) >> 4) | ((index & 0x0F0F) << 4);
-    index = ((index & 0xFF00) >> 8) | ((index & 0x00FF) << 8);
-    index >>= (16 - log2N);
-}
-
 void main() {
-    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-    if (coord.x >= N || coord.y >= N) return;
+    ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
 
-    int log2N = int(log2(float(N)));
+    // Select the processing axis based on the pass direction.
+    // For horizontal pass (uDirection==0), index is x; for vertical, it's y.
+    int index = (uDirection == 0) ? gid.x : gid.y;
+    // The constant coordinate along the other axis.
+    int constIndex = (uDirection == 0) ? gid.y : gid.x;
 
-    // Load data into shared memory
-    vec4 value = imageLoad(inputTexture, coord);
-    sharedMem[coord.x % 16][coord.y % 16] = value;
-    memoryBarrierShared();
-    barrier();
-
-    // Perform FFT along X (Row-wise FFT)
-    int x = coord.x;
-    bitReversePermute(x, log2N);
-    vec4 fftRowValue = sharedMem[x % 16][coord.y % 16];
-
-    for (int stage = 0; stage < log2N; ++stage) {
-        int halfSize = 1 << stage;
-        int fullSize = halfSize * 2;
-
-        int pairIndex = (x / fullSize) * fullSize + (x % halfSize);
-        int matchIndex = pairIndex + halfSize;
-
-        float k = float(x % fullSize) / fullSize;
-        float theta = direction * 2.0 * PI * k;
-        vec2 twiddle = vec2(cos(theta), sin(theta));
-
-        vec2 f_even = sharedMem[pairIndex % 16][coord.y % 16].rg;
-        vec2 f_odd  = sharedMem[matchIndex % 16][coord.y % 16].rg;
-
-        vec2 f_odd_rotated = vec2(
-            f_odd.r * twiddle.r - f_odd.g * twiddle.g,
-            f_odd.r * twiddle.g + f_odd.g * twiddle.r
-        );
-
-        sharedMem[pairIndex % 16][coord.y % 16].rg = 0.5 * (f_even + f_odd_rotated);
-        sharedMem[matchIndex % 16][coord.y % 16].rg = 0.5 * (f_even - f_odd_rotated);
-
-        memoryBarrierShared();
-        barrier();
-    }
-
-    // Transpose (Swap X and Y)
-    vec4 transposedValue = sharedMem[coord.y % 16][coord.x % 16];
-    memoryBarrierShared();
-    barrier();
-
-    // Perform FFT along Y (Column-wise FFT)
-    int y = coord.y;
-    bitReversePermute(y, log2N);
-    vec4 fftColValue = transposedValue;
-
-    for (int stage = 0; stage < log2N; ++stage) {
-        int halfSize = 1 << stage;
-        int fullSize = halfSize * 2;
-
-        int pairIndex = (y / fullSize) * fullSize + (y % halfSize);
-        int matchIndex = pairIndex + halfSize;
-
-        float k = float(y % fullSize) / fullSize;
-        float theta = direction * 2.0 * PI * k;
-        vec2 twiddle = vec2(cos(theta), sin(theta));
-
-        vec2 f_even = sharedMem[coord.x % 16][pairIndex % 16].rg;
-        vec2 f_odd  = sharedMem[coord.x % 16][matchIndex % 16].rg;
-
-        vec2 f_odd_rotated = vec2(
-            f_odd.r * twiddle.r - f_odd.g * twiddle.g,
-            f_odd.r * twiddle.g + f_odd.g * twiddle.r
-        );
-
-        sharedMem[coord.x % 16][pairIndex % 16].rg = 0.5 * (f_even + f_odd_rotated);
-        sharedMem[coord.x % 16][matchIndex % 16].rg = 0.5 * (f_even - f_odd_rotated);
-
-        memoryBarrierShared();
-        barrier();
-    }
-
-    // Store final result
-    imageStore(outputTexture, coord, sharedMem[coord.x % 16][coord.y % 16]);
+    // Determine the butterfly group parameters.
+    int halfSize = 1 << uStage;      // 2^stage
+    int fullSize = halfSize << 1;      // 2^(stage+1)
+    
+    // Determine our position within the current butterfly group.
+    int butterflyIndex = index % fullSize;
+    // Base index of the butterfly group.
+    int baseIndex = index - butterflyIndex;
+    
+    // The two indices to be combined.
+    int indexA = baseIndex + (butterflyIndex % halfSize);
+    int indexB = baseIndex + (butterflyIndex % halfSize) + halfSize;
+    
+    // Compute coordinates in the texture.
+    ivec2 coordA = (uDirection == 0) ? ivec2(indexA, constIndex)
+                                     : ivec2(constIndex, indexA);
+    ivec2 coordB = (uDirection == 0) ? ivec2(indexB, constIndex)
+                                     : ivec2(constIndex, indexB);
+    
+    // Load the two complex numbers from the input texture.
+    // We store complex numbers in the .xy components.
+    vec2 a = imageLoad(uInput, coordA).xy;
+    vec2 b = imageLoad(uInput, coordB).xy;
+    
+    // Calculate the twiddle factor.
+    // For a forward FFT, the exponent sign is negative.
+ 
+ // Change the angle sign for inverse FFT:
+float angle = +2.0 * PI * float(butterflyIndex % halfSize) / float(fullSize);
+    vec2 twiddle = vec2(cos(angle), sin(angle));
+    
+    // Multiply b by the twiddle factor (complex multiplication).
+    vec2 bTwiddled = vec2(
+        b.x * twiddle.x - b.y * twiddle.y,
+        b.x * twiddle.y + b.y * twiddle.x
+    );
+    
+    // Butterfly computations.
+    vec2 outA = a + bTwiddled;
+    vec2 outB = a - bTwiddled;
+    
+    // Write the computed results back to the output texture.
+    // Which coordinate gets updated depends on the butterfly index.
+    if (butterflyIndex < halfSize)
+        imageStore(uOutput, coordA, vec4(outA, 0.0, 0.0));
+    else
+        imageStore(uOutput, coordB, vec4(outB, 0.0, 0.0));
 }
+
