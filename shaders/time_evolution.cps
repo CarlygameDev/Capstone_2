@@ -8,7 +8,7 @@ uniform float domainSize;    // Physical size of the ocean patch (meters)
 
 const float PI = 3.14159265359;
 const float G = 9.81;
-
+const float RepeatTime=200;
 // Complex multiplication helper
 vec2 complex_mult(vec2 a, vec2 b) {
     return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
@@ -20,28 +20,43 @@ void main() {
     int N = texSize.x;
     
     // Calculate wavevector k (matches spectrum generation)
-    vec2 uv = vec2(coord) / vec2(texSize);
-    vec2 k = (uv - 0.5) * 2.0 * PI / (domainSize / texSize.x);
+    vec4 initial_signal=imageLoad(spectrumTex, coord);
+    vec2 h0= initial_signal.xy;
+    vec2 h0_conj=initial_signal.zw;
+  
+vec2 K = (vec2(coord) - vec2(N / 2)) * (2.0 * PI / domainSize);
+//    vec2 K = (coord.xy - (N/2)) * 2.0 * PI ;
+  
     
-    // Fetch initial spectrum value h₀(k)
-    vec4 h0 = imageLoad(spectrumTex, coord);
-    
-    // Calculate angular frequency ω = sqrt(g * |k|)
-    float kLen = length(k);
-    float omega = sqrt(G * kLen);
-    
-    // Calculate mirrored coordinate for -k
-    ivec2 mirroredCoord = ivec2(N - 1 - coord.x, N - 1 - coord.y);
-    vec4 h0_mirrored = imageLoad(spectrumTex, mirroredCoord);
-    
-    // Time evolution factors
-    vec2 exp_pos = vec2(cos(omega * time), sin(omega * time));  // e^(iωt)
-    vec2 exp_neg = vec2(exp_pos.x, -exp_pos.y);                 // e^(-iωt)
-    
-    // Compute h(k, t) = h₀(k)e^(iωt) + h₀*(-k)e^(-iωt)
-    vec2 term1 = complex_mult(h0.xy, exp_pos);
-    vec2 term2 = complex_mult(vec2(h0_mirrored.x, -h0_mirrored.y), exp_neg);
-    vec2 h_t = term1 + term2;
-    
-    imageStore(evolvedTex, coord, vec4(h_t, 0.0, 0.0));
+   
+    float kMag = length(K);
+    float kMagRcp = 1/kMag;
+     if (kMag < 0.0001f) {
+            kMagRcp = 1.0f;
+        }
+
+        float w_0 = 2.0f * PI / RepeatTime;// /RepeatTime
+        float dispersion = floor(sqrt(G*kMag)/w_0)*w_0*time;
+vec2 exponent= vec2(cos(dispersion),sin(dispersion));
+vec2 htilde = complex_mult(h0, exponent) + complex_mult(h0_conj, vec2(exponent.x, -exponent.y));
+ vec2 ih = vec2(-htilde.y, htilde.x);
+
+  vec2 displacementX = ih * K.x * kMagRcp;
+   vec2 displacementY = htilde;
+        vec2 displacementZ = ih * K.y * kMagRcp;
+
+  vec2 displacementX_dx = -htilde * K.x * K.x * kMagRcp;
+        vec2 displacementY_dx = ih * K.x;
+        vec2 displacementZ_dx = -htilde * K.x * K.y * kMagRcp;
+
+       vec2 displacementY_dz = ih * K.y;
+        vec2 displacementZ_dz = -htilde * K.y * K.y * kMagRcp;
+
+        vec2 htildeDisplacementX = vec2(displacementX.x - displacementZ.y, displacementX.y + displacementZ.x);
+        vec2 htildeDisplacementZ = vec2(displacementY.x - displacementZ_dx.y, displacementY.y + displacementZ_dx.x);
+        
+        vec2 htildeSlopeX = vec2(displacementY_dx.x - displacementY_dz.y, displacementY_dx.y + displacementY_dz.x);
+        vec2 htildeSlopeZ = vec2(displacementX_dx.x - displacementZ_dz.y, displacementX_dx.y + displacementZ_dz.x);
+
+    imageStore(evolvedTex, coord, vec4(htildeDisplacementX,htildeDisplacementZ));
 }

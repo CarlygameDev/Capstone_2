@@ -238,6 +238,7 @@ public:
         catch (std::ifstream::failure& e)
         {
             std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+            std::cout << "File Name: " << computePath<<std::endl;
         }
         const char* cShaderCode = computeCode.c_str();
         // 2. compile shaders
