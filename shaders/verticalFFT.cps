@@ -1,12 +1,12 @@
 #version 430
 
-// Define the size constants
-#define SIZE 512
-#define LOG_SIZE 9
+#define SIZE 1024
+#define LOG_SIZE 10
+
 // Input texture holding complex values stored in the xy channels.
-layout (rgba32f, binding = 0) uniform image2D uInput;
+layout(rgba32f, binding = 0) uniform image2DArray uInput;
 // Output texture for writing the IFFT pass results.
-layout (rgba32f, binding = 1) uniform image2D uOutput;
+
 
 // Shared memory buffer for FFT computation
 shared vec4 fftGroupBuffer[2][SIZE];
@@ -62,15 +62,16 @@ layout(local_size_x = SIZE, local_size_y = 1, local_size_z = 1) in;
 void main() {
     ivec3 id = ivec3(gl_GlobalInvocationID.xyz);
     ivec2 coord = id.yx;
-
+  for (int i = 0; i < 8; ++i) {
     // Load the input data from the texture
-    vec4 input = imageLoad(uInput, coord);
+    vec4 input = imageLoad(uInput, ivec3(coord,i));
 
     // Perform the IFFT operation on each element
     vec4 result = FFT(id.x, input);
 
     // Store the result in the output texture
-   imageStore(uInput, coord, result);
+    imageStore(uInput, ivec3(coord,i), result);
+    }
 }
 
 

@@ -156,7 +156,7 @@
   <ItemGroup>
     <None Include="shaders\afu.cs" />
     <None Include="shaders\basic.frag" />
-    <None Include="shaders\heightConjugate.cps" />
+    <None Include="shaders\SpectrumConjugate.cps" />
     <None Include="shaders\horizontalFFT.cps" />
     <None Include="shaders\fftNormalize.cps" />
     <None Include="shaders\oceanFFT.frag" />
@@ -172,7 +172,7 @@
     <None Include="shaders\verticalFFT.cps" />
     <None Include="shaders\vTexture.frag" />
     <None Include="shaders\Vtexture.vert" />
-    <None Include="shaders\waveHeight.cps" />
+    <None Include="shaders\Spectrum_INIT.cps" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="shaders\backup.txt" />

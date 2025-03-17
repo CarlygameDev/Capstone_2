@@ -1,10 +1,12 @@
 ﻿#version 430
 layout(local_size_x = 16, local_size_y = 16) in;
-layout(rgba32f, binding = 0) uniform image2D spectrumTex;   // Input: h₀(k)
-layout(rgba32f, binding = 1) uniform image2D evolvedTex;     // Output: h(k, t)
+layout(rgba32f, binding = 0) uniform image2DArray input;   
+layout(rgba32f, binding = 1) uniform image2DArray _output;  
+
+uniform int domains[4]; 
 
 uniform float time;          // Elapsed time in seconds
-uniform float domainSize;    // Physical size of the ocean patch (meters)
+
 
 const float PI = 3.14159265359;
 const float G = 9.81;
@@ -16,15 +18,15 @@ vec2 complex_mult(vec2 a, vec2 b) {
 
 void main() {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 texSize = imageSize(spectrumTex);
+    ivec2 texSize = imageSize(input).xy;
     int N = texSize.x;
-    
+    for (int i = 0; i < 4; ++i) {
     // Calculate wavevector k (matches spectrum generation)
-    vec4 initial_signal=imageLoad(spectrumTex, coord);
+    vec4 initial_signal=imageLoad(input, ivec3(coord,i));
     vec2 h0= initial_signal.xy;
     vec2 h0_conj=initial_signal.zw;
   
-vec2 K = (vec2(coord) - vec2(N / 2)) * (2.0 * PI / domainSize);
+vec2 K = (vec2(coord) - vec2(N / 2)) * (2.0 * PI / domains[i]);
 //    vec2 K = (coord.xy - (N/2)) * 2.0 * PI ;
   
     
@@ -58,5 +60,7 @@ vec2 htilde = complex_mult(h0, exponent) + complex_mult(h0_conj, vec2(exponent.x
         vec2 htildeSlopeX = vec2(displacementY_dx.x - displacementY_dz.y, displacementY_dx.y + displacementY_dz.x);
         vec2 htildeSlopeZ = vec2(displacementX_dx.x - displacementZ_dz.y, displacementX_dx.y + displacementZ_dz.x);
 
-    imageStore(evolvedTex, coord, vec4(htildeDisplacementX,htildeDisplacementZ));
+    imageStore(_output, ivec3(coord,i*2), vec4(htildeDisplacementX,htildeDisplacementZ));
+     imageStore(_output, ivec3(coord,i*2+1), vec4(htildeSlopeX,htildeSlopeZ));
+    }
 }

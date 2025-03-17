@@ -128,81 +128,39 @@ int main()
 
 
 
-    GLuint hk,h_k, displacementTexture,heightMap,hPassTexture;
-    const int textureSize = 512;
-
-    // Create texture for storing wave spectrum
-    glGenTextures(1, &hk);
-    glBindTexture(GL_TEXTURE_2D, hk);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, textureSize, textureSize);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
+   
+   
    
 
-    int  rand = loadTexture(fileFinder::getTexture("container.jpg").c_str());
-    int domainSize = 512;
-    ComputeShader waveHeight("waveHeight.cps");
-    OceanFFTGenerator oceanSettings;
-    oceanSettings.GenerateSpectrums(1);
-    oceanSettings.spectrumBindBuffer(1);
-
-    waveHeight.use();
-    waveHeight.setFloat("domainSize", domainSize);
-    glBindImageTexture(0, hk, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-    glDispatchCompute(textureSize/16 , textureSize/16 , 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
- waveHeight=("heightConjugate.cps");
- waveHeight.use(); 
- glBindImageTexture(0, hk, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
- glDispatchCompute(textureSize / 16, textureSize / 16, 1);
-
- glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-    glUseProgram(0);
-    glGenTextures(1, &displacementTexture);
-    glBindTexture(GL_TEXTURE_2D, displacementTexture);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, textureSize,textureSize);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    glGenTextures(1, &heightMap);
-    glBindTexture(GL_TEXTURE_2D, heightMap);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, textureSize, textureSize);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    //int  rand = loadTexture(fileFinder::getTexture("container.jpg").c_str());
+  
+    ComputeShader spectrum("Spectrum_INIT.cps");
+    ComputeShader conjugate("SpectrumConjugate.cps");
+    OceanFFTGenerator oceanSettings(1024);
+    oceanSettings.GenerateSpectrums(8);
+    oceanSettings.CalculateSpectrum(spectrum,conjugate);
+  
+   
  
     ComputeShader timeEvolutionShader ("time_evolution.cps");
     timeEvolutionShader.use();
-    timeEvolutionShader.setFloat("domainSize",domainSize);
-  
+    oceanSettings.setDomain(timeEvolutionShader);
+    
     ComputeShader horizontalFFT("horizontalFFT.cps");
     ComputeShader verticalFFT("verticalFFT.cps");
-    horizontalFFT.use();
-    horizontalFFT.setInt("uSize", textureSize);
-    verticalFFT.use();
-    verticalFFT.setInt("uSize", textureSize);
-    glGenTextures(1, &hPassTexture);
-    glBindTexture(GL_TEXTURE_2D, hPassTexture);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, textureSize, textureSize);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+   
 
     Shader oceanShader("oceanFFT.vert", "oceanFFT.frag");
     oceanShader.use();
-    float normFactor = 1.0f/(textureSize*textureSize) ;
-    oceanShader.setFloat("heightScale",1);
-
-    oceanShader.setVec3("lightDir",sunDirection);
-    oceanShader.setVec3("baseColor", oceanColor);
-    oceanShader.setInt("heightMap",0);
+   
+    oceanShader.setVec3("_lightDir",sunDirection);
+    oceanShader.setInt("_EnvironmentMap",2);
+    oceanShader.setInt("_DisplacementTextures", 0);
+    oceanShader.setInt("_SlopeTextures", 1);
     ComputeShader normalizeFFT("fftNormalize.cps");
     normalizeFFT.use();
-    normalizeFFT.setFloat("normFactor", normFactor);
-    normalizeFFT.setInt("textureSize", textureSize);
+
     // render loop
     // -----------
   //  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -229,51 +187,15 @@ int main()
         // ------
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         timeEvolutionShader.use();
-        //timeEvolutionShader.setFloat("time",currentFrame);
+        
         timeEvolutionShader.setFloat("time", currentFrame);
-        glBindImageTexture(0, hk, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+        oceanSettings.EvolveSpectrum();
+        oceanSettings.IFFT(horizontalFFT, verticalFFT);
+        oceanSettings.AssembleTextures(normalizeFFT);
        
-        glBindImageTexture(1, displacementTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-        glDispatchCompute(textureSize / 16, textureSize / 16, 1);
-        glCopyImageSubData(displacementTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
-            heightMap, GL_TEXTURE_2D, 0, 0, 0, 0,
-            textureSize, textureSize, 1);
 
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-        
-        int log2N = (int)log2(textureSize); 
-
-        bool pong=false;
-        int texture[2] = { heightMap,hPassTexture };
-    
-            horizontalFFT.use();
-       
-        
-
-            glBindImageTexture(0, heightMap, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-            glBindImageTexture(1, hPassTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-            glDispatchCompute(1, textureSize, 1);
-            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-       
       
-        
        
-            verticalFFT.use();
-    
-
-            glBindImageTexture(0, heightMap, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-            glBindImageTexture(1, heightMap, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-            glDispatchCompute(1, textureSize , 1);
-            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-            
-       
-
-        
-      
-        normalizeFFT.use();
-       glBindImageTexture(0, heightMap, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-        glDispatchCompute(textureSize / 16, textureSize / 16, 1);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 
 
@@ -282,21 +204,23 @@ int main()
         // configure transformation matrices
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-glActiveTexture(GL_TEXTURE0);
-glBindTexture(GL_TEXTURE_2D,heightMap);
+
+        oceanSettings.bindTextures();
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
         textureLoad.use();
+        textureLoad.setInt("textureArray",0);
         textureLoad.setMat4("model", glm::mat4(1));
         textureLoad.setMat4("projection", projection);
         textureLoad.setMat4("view", view);
       // ocean.Draw(textureLoad);
 
-        // Assuming you have a texture loaded and bound to GL_TEXTURE0
-        
- 
+   
         oceanShader.use();
         oceanShader.setMat4("model", glm::mat4(1));
         oceanShader.setMat4("projection", projection);
         oceanShader.setMat4("view", view);
+        oceanShader.setVec3("cameraPos",camera.Position);
      ocean.Draw(oceanShader);
         //renderCube();
 

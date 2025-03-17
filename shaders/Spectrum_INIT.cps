@@ -1,7 +1,6 @@
 ﻿#version 430
 
-layout(local_size_x = 16, local_size_y = 16) in;  // Workgroup size
-layout(rgba32f, binding = 0) uniform image2D waveTexture;  // Output texture
+
 
 
 struct SpectrumParameters {
@@ -14,10 +13,13 @@ struct SpectrumParameters {
 	float gamma;
 	float shortWavesFade;
 };
+
+layout(local_size_x = 16, local_size_y = 16) in;  // Workgroup size
+layout(rgba32f, binding = 0) uniform image2DArray Spectrums;
 layout(std430, binding = 1) buffer SpectrumsBuffer {
     SpectrumParameters _Spectrums[];
 };
-
+uniform int domains[4];  
 
 
 const float PI = 3.14159265359;
@@ -32,8 +34,7 @@ float _Depth=20;
 
 //Spectrum parameters
 const float _LowCutoff=0.0001f;
-const float _HighCutoff=9000.0f;
-uniform float domainSize;    
+const float _HighCutoff=9000.0f; 
 
 
 float Dispersion(float kMag) {
@@ -118,22 +119,23 @@ float DirectionSpectrum(float theta, float omega, SpectrumParameters spectrum) {
 }
 
 void main() {
- const float lengthScales =  domainSize;    
+    
 
-    ivec2 texSize = imageSize(waveTexture);
+    ivec2 texSize = imageSize(Spectrums).xy;
     uint _N= texSize.x;
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
    
     uint seed = id.x + _N * id.y + _N;
     seed += _Seed;
  
+ for (uint i = 0; i < 4; ++i) {
    float halfN = _N / 2.0f;
-
+   float lengthScales=domains[i];
    float deltaK = 2.0f * PI / lengthScales;
    vec2 K = (id.xy - halfN) * deltaK;
    float kLength = length(K);
-
-seed +=  uint( hash(seed) * 10);    // Generate random numbers with safety checks
+   
+seed +=  uint(i+ hash(seed) * 10);    // Generate random numbers with safety checks
 vec4 uniformRandSamples = vec4(hash(seed), hash(seed * 2), hash(seed * 3), hash(seed * 4));
 vec2 gauss1 = UniformToGaussian(uniformRandSamples.x, uniformRandSamples.y);
 vec2 gauss2 = UniformToGaussian(uniformRandSamples.z, uniformRandSamples.w);
@@ -145,15 +147,18 @@ vec2 gauss2 = UniformToGaussian(uniformRandSamples.z, uniformRandSamples.w);
 
             float dOmegadk = DispersionDerivative(kLength);
 
-            float spectrum = JONSWAP(omega, _Spectrums[0 * 2]) * DirectionSpectrum(kAngle, omega, _Spectrums[0 * 2]) * ShortWavesFade(kLength, _Spectrums[0* 2]);
+            float spectrum = JONSWAP(omega, _Spectrums[i * 2]) * DirectionSpectrum(kAngle, omega, _Spectrums[i * 2]) * ShortWavesFade(kLength, _Spectrums[1* 2]);
             
-          //  if (_Spectrums[i * 2 + 1].scale > 0)
-            //    spectrum += JONSWAP(omega, _Spectrums[i * 2 + 1]) * DirectionSpectrum(kAngle, omega, _Spectrums[i * 2 + 1]) * ShortWavesFade(kLength, _Spectrums[i * 2 + 1]);
+            if (_Spectrums[i * 2 + 1].scale > 0)
+                spectrum += JONSWAP(omega, _Spectrums[i * 2 + 1]) * DirectionSpectrum(kAngle, omega, _Spectrums[i * 2 + 1]) * ShortWavesFade(kLength, _Spectrums[i * 2 + 1]);
+            
             vec4 result = vec4(vec2(gauss2.x, gauss1.y) * sqrt(2 * spectrum * abs(dOmegadk) / kLength * deltaK * deltaK), 0.0f, 0.0f);
-            imageStore(waveTexture, id, result);
+           imageStore(Spectrums, ivec3(id,i), result);
+
         }
         else {
-            imageStore(waveTexture, id, vec4(0.0));
+            imageStore(Spectrums, ivec3(id,i), vec4(0.0));
         }
-  //  imageStore(waveTexture, id, vec4(_Spectrums[0].spreadBlend,_Spectrums[0].gamma,_Spectrums[0].scale,1));
+        }
+
 }
