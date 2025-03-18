@@ -11,9 +11,9 @@ out vec4 FragColor;
 uniform vec3 _lightDir;   
 uniform vec3 cameraPos;
 
-uniform vec3 _SunIrradiance = vec3(1.0, 1.0, 0.8);  // A warm white-yellow light, typical for sunlight.
-uniform vec3 _ScatterColor = vec3(0.1, 0.2, 0.3);    // A subtle color for scattering, often blueish.
-uniform vec3 _BubbleColor = vec3(1.0, 1.0, 1.0);     // White color for foam or bubbles.
+uniform vec3 _SunIrradiance = vec3(1.0, 0.694, 0.32);  // A warm white-yellow light, typical for sunlight.
+uniform vec3 _ScatterColor = vec3(0.016, 0.07359998, 0.16);    // A subtle color for scattering, often blueish.
+uniform vec3 _BubbleColor = vec3(0, 0.02, 0.016);     // White color for foam or bubbles.
 uniform vec3 _FoamColor = vec3(0.9, 0.9, 1.0);       // Light, foamy color, often light blue/white.
 
 
