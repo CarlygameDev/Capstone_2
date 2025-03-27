@@ -37,7 +37,7 @@ vec4 FFT(uint threadIndex, vec4 input) {
     barrier();
 
     bool flag = false;
-    for (uint step = 0; step < LOG_SIZE; ++step) {
+    for (uint step = 0; step < LOG_SIZE; step++) {
         uvec2 inputIndices;
         vec2 twiddle;
         ButterflyValues(step, threadIndex, inputIndices, twiddle);
@@ -62,15 +62,19 @@ layout(local_size_x = SIZE, local_size_y = 1, local_size_z = 1) in;
 void main() {
     ivec3 id = ivec3(gl_GlobalInvocationID.xyz);
     ivec2 coord = id.yx;
+  
   for (int i = 0; i < 8; ++i) {
+
     // Load the input data from the texture
     vec4 input = imageLoad(uInput, ivec3(coord,i));
 
     // Perform the IFFT operation on each element
-    vec4 result = FFT(id.x, input);
+    vec4 result = FFT(gl_LocalInvocationID.x, input);
+
 
     // Store the result in the output texture
     imageStore(uInput, ivec3(coord,i), result);
+
     }
 }
 

@@ -26,21 +26,24 @@ void main() {
     vec2 h0= initial_signal.xy;
     vec2 h0_conj=initial_signal.zw;
   
-vec2 K = (vec2(coord) - vec2(N / 2)) * (2.0 * PI / domains[i]);
-//    vec2 K = (coord.xy - (N/2)) * 2.0 * PI ;
+//vec2 K = (vec2(coord) - vec2(N / 2)) * (2.0 * PI / domains[i]);
+  float halfN = N / 2.0f;
+  vec2 K = (coord.xy - halfN) * 2.0f * PI / domains[i];
   
     
    
     float kMag = length(K);
     float kMagRcp = 1/kMag;
-     if (kMag < 0.0001f) {
-            kMagRcp = 1.0f;
-        }
+  if (kMag < 0.0001f) {
+         kMagRcp = 1.0f;
+      }
 
         float w_0 = 2.0f * PI / RepeatTime;// /RepeatTime
         float dispersion = floor(sqrt(G*kMag)/w_0)*w_0*time;
+    //   float dispersion = sqrt(G * kMag) * time;
 vec2 exponent= vec2(cos(dispersion),sin(dispersion));
 vec2 htilde = complex_mult(h0, exponent) + complex_mult(h0_conj, vec2(exponent.x, -exponent.y));
+
  vec2 ih = vec2(-htilde.y, htilde.x);
 
   vec2 displacementX = ih * K.x * kMagRcp;

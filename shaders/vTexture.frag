@@ -14,10 +14,11 @@ void main() {
 vec4 height=vec4(0);
     // Sample the texture array with the given TexCoord and layerIndex
     for(int i=0;i<1;i++)
-     height += texture(textureArray, vec3(TexCoord, i));
+     height += texture(textureArray, vec3(TexCoord*0.01, i));
     
    // height /=4;
     // Set the final fragment color
-    FragColor = vec4(height.aaa,1);  // Convert height to grayscale (you can change this as needed)
+   // FragColor = vec4(height.rg,0,1);  // Convert height to grayscale (you can change this as needed)
+   FragColor = vec4(height.xyz*10000,1);
 }
 

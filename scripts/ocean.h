@@ -5,6 +5,34 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 
+
+GLuint CreateTextureArray(int width, int height, int depth, GLenum format, bool useMips) {
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureID);
+
+    // Determine number of mip levels
+    GLint levels = useMips ? (1 + floor(log2(glm::max(width, height)))) : 1;
+
+    // Allocate storage with mipmaps
+    glTexStorage3D(GL_TEXTURE_2D_ARRAY, levels, format, width, height, depth);
+
+    // Set filtering
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER,  GL_LINEAR_MIPMAP_LINEAR );
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Set wrapping mode
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // Anisotropic filtering
+    glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_ANISOTROPY, 16.0f);
+
+    return textureID; 
+}
+
+
+
 struct DisplaySpectrumSettings {
 public:
     //   [Range(0, 5)]
@@ -38,6 +66,7 @@ public:
  void bindTextures();
  
  void setDomain(ShaderBase shader);
+void createFFTWaterPlane(const int SIZE);
 private:
    
     float RandomFloat(float min, float max);
@@ -53,7 +82,7 @@ private:
     };
    float JonswapAlpha(float fetch, float windSpeed);
    float JonswapPeakFrequency(float fetch, float windSpeed);
-   void FillSpectrumStruct(DisplaySpectrumSettings displaySettings, SpectrumSettings computeSettings);
+   void FillSpectrumStruct(DisplaySpectrumSettings displaySettings, SpectrumSettings& computeSettings);
    GLuint N;//texture Size
    GLuint spectrumBuffer;
    GLuint initial_spectrumTextures;
@@ -62,6 +91,10 @@ private:
    GLuint slopeTextures;
    vector<int>DomainSizes;  
    std::vector<SpectrumSettings> spectrums;
+   void debug();
+
+   GLuint planeModel;
+   GLuint indices;
 };
 
 OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
@@ -72,48 +105,23 @@ OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
     
     //Textures 
  ///////////////////////////////////////
-    glGenTextures(1, &initial_spectrumTextures);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
-
-    glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA32F, textureSize, textureSize, 4);//hardcoded amount for now
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA32F, true);  // ARGBHalf in Unity
+    spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA32F, true);         // ARGBHalf
+    displacementTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA32F, true);     // ARGBHalf
+    slopeTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RG32F, true);              // RGHalf
 
 
-    glGenTextures(1, &spectrumTextures);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, spectrumTextures);
-
-    glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA32F, textureSize, textureSize, 4*2);//hardcoded amount for now
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    glGenTextures(1, &displacementTextures);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
-
-    glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA32F, textureSize, textureSize, 4);//hardcoded amount for now
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    glGenTextures(1, &slopeTextures);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, slopeTextures);
-
-    glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RG32F, textureSize, textureSize, 4);//hardcoded amount for now
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    
+    
+    N = textureSize;
+    debug();
+    return;
 
     for (int i = 0; i < 4;i++) {
    // DomainSizes.push_back((int)RandomFloat(100, 500));
         DomainSizes.push_back(94);
     }
-    N = textureSize;
+   
 }
 OceanFFTGenerator::~OceanFFTGenerator() {}
 
@@ -157,7 +165,7 @@ float  OceanFFTGenerator::JonswapPeakFrequency(float fetch, float windSpeed) {
     return 22 * glm::pow(windSpeed * fetch / gravity / gravity, -0.33f);
 }
 
-void OceanFFTGenerator::FillSpectrumStruct(DisplaySpectrumSettings displaySettings,  SpectrumSettings computeSettings) {
+void OceanFFTGenerator::FillSpectrumStruct(DisplaySpectrumSettings displaySettings,  SpectrumSettings& computeSettings) {
     computeSettings.scale = displaySettings.scale;
     computeSettings.angle = displaySettings.windDirection / 180 * glm::pi<float>();
     computeSettings.spreadBlend = displaySettings.spreadBlend;
@@ -185,12 +193,12 @@ void OceanFFTGenerator::CalculateSpectrum(ComputeShader Spectrum, ComputeShader 
  spectrumBindBuffer(1);
    
     setDomain(Spectrum);
-    glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
     glDispatchCompute(N / 16,  N/ 16, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     conjugate.use();
    
-    glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
+  
     glDispatchCompute(N / 16, N / 16, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 }
@@ -224,20 +232,193 @@ void OceanFFTGenerator::IFFT(ComputeShader horizontal, ComputeShader vertical) {
 void OceanFFTGenerator::AssembleTextures(ComputeShader shader) {
     shader.use();
     glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-    glBindImageTexture(1, displacementTextures, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(1, displacementTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
     glBindImageTexture(2, slopeTextures, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
     glDispatchCompute(N/ 16, N / 16, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+ 
+
+    
 }
 void  OceanFFTGenerator::setDomain(ShaderBase shader) {
     glUniform1iv(glGetUniformLocation(shader.ID, "domains"), DomainSizes.size(), DomainSizes.data());
 }
 
 void OceanFFTGenerator::bindTextures() {
+
+glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
+    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, slopeTextures);
+    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
+    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D_ARRAY, slopeTextures);
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D_ARRAY, spectrumTextures);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
+
+    glBindVertexArray(planeModel);
+    glDrawElements(GL_TRIANGLES, indices, GL_UNSIGNED_INT, 0);
+}
+
+
+void OceanFFTGenerator::debug() {
+    DisplaySpectrumSettings settings[8];
+
+    // Spectrum 1
+    settings[0].scale = 0.1f;
+    settings[0].windSpeed = 2.0f;
+    settings[0].windDirection = 22.0f; // Assuming default value since it's not provided
+    settings[0].fetch = 100000.0f;
+    settings[0].spreadBlend = 0.642f; // Assuming default value since it's not provided
+    settings[0].swell = 1.0f;
+    settings[0].peakEnhancement = 1.0f;
+    settings[0].shortWavesFade = 0.025f;
+
+    // Spectrum 2
+    // Assuming default values for missing fields
+    settings[1].scale = 0.07f; // Not provided
+    settings[1].windSpeed = 2.0f; 
+    settings[1].windDirection = 59.0f; // Not provided
+    settings[1].fetch = 1000; // Not provided
+    settings[1].spreadBlend = 0.0f; // Not provided
+    settings[1].swell = 1.0f; // Not provided
+    settings[1].peakEnhancement = 1.0f; // Not provided
+    settings[1].shortWavesFade = 0.01f; // Not provided
+
+    // Spectrum 3
+    settings[2].scale = 0.25f;
+    settings[2].windSpeed = 20.0f;
+    settings[2].windDirection = 97.0f; // Assuming default value since it's not provided
+    settings[2].fetch = 1e+08f;
+    settings[2].spreadBlend = 0.14;
+    settings[2].swell = 1;
+    settings[2].peakEnhancement = 1.0f;
+    settings[2].shortWavesFade = 0.5f;
+
+    // Spectrum 4
+    settings[3].scale = 0.25f;
+    settings[3].windSpeed = 20.0f;
+    settings[3].windDirection = 67.0f; // Assuming default value since it's not provided
+    settings[3].fetch = 1000000.0f;
+    settings[3].spreadBlend = 0.47f;
+    settings[3].swell = 1.0f;
+    settings[3].peakEnhancement = 1.0f;
+    settings[3].shortWavesFade = 0.5f;
+
+    // Spectrum 5
+    settings[4].scale = 0.15f;
+    settings[4].windSpeed = 5.0f;
+    settings[4].windDirection = 105.0f; // Assuming default value since it's not provided
+    settings[4].fetch = 1000000.0f;
+    settings[4].spreadBlend = 0.2f; // Assuming default value since it's not provided
+    settings[4].swell = 1.0f;
+    settings[4].peakEnhancement = 1.0f;
+    settings[4].shortWavesFade = 0.5f;
+
+    // Spectrum 6
+    settings[5].scale = 0.1f;
+    settings[5].windSpeed = 1.0f; // Not provided
+    settings[5].windDirection = 19.0f; // Not provided
+    settings[5].fetch = 10000.0f;
+    settings[5].spreadBlend = 0.298f; // Not provided
+    settings[5].swell = 0.695f;
+    settings[5].peakEnhancement = 1.0f;
+    settings[5].shortWavesFade = 0.5f;
+
+    // Spectrum 7
+    settings[6].scale = 1.00f;
+    settings[6].windSpeed = 1.0f; // Not provided
+    settings[6].windDirection = 209.0f; // Not provided
+    settings[6].fetch = 200000.0f;
+    settings[6].spreadBlend = 0.56f; // Not provided
+    settings[6].swell = 1.0f;
+    settings[6].peakEnhancement = 1.0f;
+    settings[6].shortWavesFade = 0.0001f;
+
+    // Spectrum 8
+    settings[7].scale = 0.23f;
+    settings[7].windSpeed = 1.0f; // Not provided
+    settings[7].windDirection = 0.0f; // Not provided
+    settings[7].fetch = 1000.0f;
+    settings[7].spreadBlend = 0.0f; // Not provided
+    settings[7].swell = 0.0f;
+    settings[7].peakEnhancement = 1.0f;
+    settings[7].shortWavesFade = 0.0001f;
+
+    // Now you can use the settings array for debugging or further processing
+    for (int i = 0; i < 8; ++i) {
+        SpectrumSettings computeSettings;
+        FillSpectrumStruct(settings[i], computeSettings);
+        spectrums.push_back(computeSettings);
+    }
+    DomainSizes = { 94,128,64,32 };
+}
+
+
+
+void OceanFFTGenerator::createFFTWaterPlane(const int SIZE) {
+    std::vector<float> vertices;
+    std::vector<unsigned int> indices;
+
+    // Generate vertices
+    for (int z = 0; z < SIZE; ++z) {
+        for (int x = 0; x < SIZE; ++x) {
+            float xPos = (x - SIZE / 2);
+            float zPos = (z - SIZE / 2);
+
+            vertices.push_back(xPos);
+            vertices.push_back(0);
+            vertices.push_back(zPos);
+        }
+    }
+
+    // Generate indices for a grid
+    for (int z = 0; z < SIZE - 1; ++z) {
+        for (int x = 0; x < SIZE - 1; ++x) {
+            int topLeft = z * SIZE + x;
+            int topRight = topLeft + 1;
+            int bottomLeft = (z + 1) * SIZE + x;
+            int bottomRight = bottomLeft + 1;
+
+            // First triangle
+            indices.push_back(topLeft);
+            indices.push_back(bottomLeft);
+            indices.push_back(topRight);
+
+            // Second triangle
+            indices.push_back(topRight);
+            indices.push_back(bottomLeft);
+            indices.push_back(bottomRight);
+        }
+    }
+
+    // Upload to OpenGL
+    glGenVertexArrays(1, &planeModel);
+    glBindVertexArray(planeModel);
+
+    GLuint VBO, EBO;
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    // Upload vertex data
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+    // Upload index data
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+    // Define vertex attributes
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Store the number of indices for rendering
+    this->indices = indices.size();
 }

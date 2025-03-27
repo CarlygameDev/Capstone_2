@@ -47,14 +47,29 @@ float DispersionDerivative(float kMag) {
 }
 
 
-float hash(uint seed) {
-    seed = (seed ^ 61U) ^ (seed >> 16U);
-    seed *= 9U;
-    seed ^= seed >> 4U;
-    seed *= 0x27d4eb2dU; // Prime constant
-    seed ^= seed >> 15U;
-    return float(seed & 0xFFFFFFFFU) / 4294967295.0;
+float hash(uint n) {
+    // Hugo Elias-style hash with 40-bit constant emulation
+    n = (n << 13U) ^ n;
+
+    // Split the 40-bit constant 0x1376312589 into two parts:
+    // HIGH_PART = 0x1376 (upper 16 bits)
+    // LOW_PART  = 0x312589 (lower 24 bits)
+    const uint HIGH_PART = 0x1376U;
+    const uint LOW_PART = 0x312589U;
+
+    // Emulate 40-bit addition using modular arithmetic (32-bit wrap-around)
+    n = n * (n * n * 15731U + 0x789221U);
+    n = n + LOW_PART;   // Add lower 24 bits
+    n = n + (HIGH_PART << 24U); // Add upper 16 bits shifted into higher 32 bits
+
+    // Mask to keep the result within 32 bits
+    return float(n & 0x7FFFFFFFU) / float(0x7FFFFFFF);
 }
+
+
+
+
+
 float TMACorrection(float omega) {
 	float omegaH = omega * sqrt(_Depth / _Gravity);
 	if (omegaH <= 1.0f)
@@ -72,10 +87,7 @@ float SpreadPower(float omega, float peakOmega) {
 }
 
 
-// Improved random number generation
-float uniformRandom(vec2 uv) {
-    return fract(sin(dot(uv, vec2(127.1, 311.7))) * 43758.5453);
-}
+
 
 vec2 UniformToGaussian(float u1, float u2) {
     float R = sqrt(-2.0f * log(u1));
@@ -135,7 +147,7 @@ void main() {
    vec2 K = (id.xy - halfN) * deltaK;
    float kLength = length(K);
    
-seed +=  uint(i+ hash(seed) * 10);    // Generate random numbers with safety checks
+seed += int(i+ hash(seed) * 10);    // Generate random numbers with safety checks
 vec4 uniformRandSamples = vec4(hash(seed), hash(seed * 2), hash(seed * 3), hash(seed * 4));
 vec2 gauss1 = UniformToGaussian(uniformRandSamples.x, uniformRandSamples.y);
 vec2 gauss2 = UniformToGaussian(uniformRandSamples.z, uniformRandSamples.w);
@@ -147,18 +159,20 @@ vec2 gauss2 = UniformToGaussian(uniformRandSamples.z, uniformRandSamples.w);
 
             float dOmegadk = DispersionDerivative(kLength);
 
-            float spectrum = JONSWAP(omega, _Spectrums[i * 2]) * DirectionSpectrum(kAngle, omega, _Spectrums[i * 2]) * ShortWavesFade(kLength, _Spectrums[1* 2]);
+            float spectrum = JONSWAP(omega, _Spectrums[i * 2]) * DirectionSpectrum(kAngle, omega, _Spectrums[i * 2]) * ShortWavesFade(kLength, _Spectrums[i* 2]);
             
             if (_Spectrums[i * 2 + 1].scale > 0)
                 spectrum += JONSWAP(omega, _Spectrums[i * 2 + 1]) * DirectionSpectrum(kAngle, omega, _Spectrums[i * 2 + 1]) * ShortWavesFade(kLength, _Spectrums[i * 2 + 1]);
             
-            vec4 result = vec4(vec2(gauss2.x, gauss1.y) * sqrt(2 * spectrum * abs(dOmegadk) / kLength * deltaK * deltaK), 0.0f, 0.0f);
+           vec4 result = vec4(vec2(gauss2.x, gauss1.y) * sqrt(2 * spectrum * abs(dOmegadk) / kLength * deltaK * deltaK), 0.0f, 0.0f);
+        //    vec4 result = vec4(vec2(gauss2+ gauss1) * sqrt(2 * spectrum * abs(dOmegadk) / kLength * deltaK * deltaK), 0.0f, 0.0f);
            imageStore(Spectrums, ivec3(id,i), result);
 
         }
         else {
             imageStore(Spectrums, ivec3(id,i), vec4(0.0));
         }
-        }
 
+        }
+          
 }

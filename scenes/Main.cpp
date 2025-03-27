@@ -137,9 +137,9 @@ int main()
     ComputeShader spectrum("Spectrum_INIT.cps");
     ComputeShader conjugate("SpectrumConjugate.cps");
     OceanFFTGenerator oceanSettings(1024);
-    oceanSettings.GenerateSpectrums(8);
+   // oceanSettings.GenerateSpectrums(8);
     oceanSettings.CalculateSpectrum(spectrum,conjugate);
-  
+    oceanSettings.createFFTWaterPlane(100);
    
  
     ComputeShader timeEvolutionShader ("time_evolution.cps");
@@ -160,6 +160,8 @@ int main()
     oceanShader.setInt("_SlopeTextures", 1);
     ComputeShader normalizeFFT("fftNormalize.cps");
     normalizeFFT.use();
+
+    
 
     // render loop
     // -----------
@@ -205,26 +207,38 @@ int main()
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
+        
+        textureLoad.use();
+ textureLoad.setInt("textureArray",4);
+ glm::mat4 model = glm::mat4();
+  // glm::mat4 model= glm::translate(glm::mat4(1), glm::vec3(-512, 0, 0));
+ textureLoad.setMat4("model", model);
+        textureLoad.setMat4("projection", projection);
+        textureLoad.setMat4("view", view);
         oceanSettings.bindTextures();
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        textureLoad.use();
-        textureLoad.setInt("textureArray",0);
-        textureLoad.setMat4("model", glm::mat4(1));
-        textureLoad.setMat4("projection", projection);
-        textureLoad.setMat4("view", view);
-      // ocean.Draw(textureLoad);
+        
+       
+     
+       // model = glm::scale(model, glm::vec3(10));
+        //textureLoad.setMat4("model",glm::translate(glm::mat4(1), glm::vec3(-512,0,0)));
+       
+        
+    //  ocean.Draw(textureLoad);
 
    
         oceanShader.use();
-        oceanShader.setMat4("model", glm::mat4(1));
+       model = glm::mat4();
+        oceanShader.setMat4("model", model);
         oceanShader.setMat4("projection", projection);
         oceanShader.setMat4("view", view);
-        oceanShader.setVec3("cameraPos",camera.Position);
-     ocean.Draw(oceanShader);
+        oceanShader.setVec3("cameraPos", camera.Position);
+        oceanSettings.bindTextures();
+   //  ocean.Draw(oceanShader);
         //renderCube();
 
-  
+
 
 
         // draw skybox as last
@@ -264,6 +278,7 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
+    
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -272,6 +287,7 @@ void processInput(GLFWwindow* window)
         camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
 
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed)
     {
