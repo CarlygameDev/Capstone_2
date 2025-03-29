@@ -17,7 +17,7 @@ uniform float _FoamAdd=0.1;
 
 // Permutation function
 vec4 Permute(vec4 data, uvec3 id) {
-    return data * (1.0 - 2.0 * float((id.x + id.y) % 2));
+    return data * (1.0 - 2.0 * ((id.x + id.y) % 2));
 }
 
 void main() {

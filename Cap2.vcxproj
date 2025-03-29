@@ -176,6 +176,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="shaders\backup.txt" />
+    <Text Include="shaders\precomputeDiddyFactor.cps" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

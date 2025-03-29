@@ -209,7 +209,7 @@ int main()
 
         
         textureLoad.use();
- textureLoad.setInt("textureArray",4);
+ textureLoad.setInt("textureArray",1);
  glm::mat4 model = glm::mat4();
   // glm::mat4 model= glm::translate(glm::mat4(1), glm::vec3(-512, 0, 0));
  textureLoad.setMat4("model", model);
@@ -234,8 +234,8 @@ int main()
         oceanShader.setMat4("projection", projection);
         oceanShader.setMat4("view", view);
         oceanShader.setVec3("cameraPos", camera.Position);
-        oceanSettings.bindTextures();
-   //  ocean.Draw(oceanShader);
+   //     oceanSettings.bindTextures();
+    // ocean.Draw(oceanShader);
         //renderCube();
 
 

@@ -87,14 +87,18 @@ private:
    GLuint spectrumBuffer;
    GLuint initial_spectrumTextures;
    GLuint spectrumTextures;
+   GLuint pingPongTextures;
    GLuint displacementTextures;
    GLuint slopeTextures;
+   GLuint twiddleTexture;
+
    vector<int>DomainSizes;  
    std::vector<SpectrumSettings> spectrums;
    void debug();
 
    GLuint planeModel;
    GLuint indices;
+  
 };
 
 OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
@@ -106,13 +110,32 @@ OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
     //Textures 
  ///////////////////////////////////////
     initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA32F, true);  // ARGBHalf in Unity
-    spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA32F, true);         // ARGBHalf
+    spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA32F, true);     
+     pingPongTextures   = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA32F, true);            
     displacementTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA32F, true);     // ARGBHalf
     slopeTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RG32F, true);              // RGHalf
+   
 
 
-    
-    
+    glGenTextures(1, &twiddleTexture);
+    glBindTexture(GL_TEXTURE_2D, twiddleTexture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, log2(textureSize), textureSize); // log2(FFTSize) FFT stages, FFTSize entries
+
+    // Set texture parameters (use NEAREST filtering to avoid interpolation)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // Bind it to the compute shader
+    glBindImageTexture(0, twiddleTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+    ComputeShader precomputeDiddy("precomputeDiddyFactor.cps");
+    precomputeDiddy.use();
+    precomputeDiddy.setInt("Size",textureSize);
+    glDispatchCompute(log2(textureSize) , textureSize/2 / 8, 1);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
     N = textureSize;
     debug();
     return;
@@ -211,23 +234,47 @@ void OceanFFTGenerator::EvolveSpectrum() {
   
 }
 void OceanFFTGenerator::IFFT(ComputeShader horizontal, ComputeShader vertical) {
-    horizontal.use();
+    int logSize = (int)log2(N);
+    bool pingPong = false;
 
-
+   
 
     glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
- 
-    glDispatchCompute(1, N, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-
-
+    glBindImageTexture(1, pingPongTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
+    glBindImageTexture(2, twiddleTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+    horizontal.use();
+    for (int i = 0; i < logSize; i++)
+    {
+        pingPong = !pingPong;
+        horizontal.setInt("Step", i);
+        horizontal.setBool("PingPong", pingPong);
+        glDispatchCompute( N / 8, N / 8, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
 
     vertical.use();
+    for (int i = 0; i < logSize; i++)
+    {
+        pingPong = !pingPong;
+        vertical.setInt("Step", i);
+        vertical.setBool("PingPong", pingPong);
+        glDispatchCompute(N / 8, N / 8, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
 
+    if (pingPong)
+    {
+        glCopyImageSubData(
+            pingPongTextures, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0,  // Source
+            spectrumTextures, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0,  // Destination
+            N, N, DomainSizes.size()*2  // Copy full texture array
+        );
 
-    glDispatchCompute(1, N, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
+
+    
+
+   
 }
 void OceanFFTGenerator::AssembleTextures(ComputeShader shader) {
     shader.use();
@@ -262,7 +309,8 @@ glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
     glBindTexture(GL_TEXTURE_2D_ARRAY, spectrumTextures);
     glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
-
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, twiddleTexture);
     glBindVertexArray(planeModel);
     glDrawElements(GL_TRIANGLES, indices, GL_UNSIGNED_INT, 0);
 }

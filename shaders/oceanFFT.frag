@@ -116,7 +116,7 @@ void main() {
     colorOutput = max(vec3(0.0), colorOutput);
 
     // Blend in the foam color based on foam factor.
-    colorOutput = mix(colorOutput, _FoamColor, clamp(foam, 0.0, 1.0));
+  //  colorOutput = mix(colorOutput, _FoamColor, clamp(foam, 0.0, 1.0));
 
     FragColor = vec4(colorOutput, 1.0);
 }
