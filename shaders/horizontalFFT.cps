@@ -31,7 +31,7 @@ imageStore(Buffer1,ivec3(id.xy,i), result);
 	else
 	{
 	vec4  values=imageLoad(Buffer1,ivec3(inputsIndices.y, id.y,i));
-	vec4 result=	  imageLoad(Buffer1,ivec3(inputsIndices.x, id.y,i));
+	vec4 result=	  imageLoad(Buffer1,ivec3(inputsIndices.x, id.y,i))
 			+ vec4( ComplexMult(vec2(data.r, -data.g),values.rg),ComplexMult(vec2(data.r, -data.g),values.ba) );
 		imageStore(Buffer0,ivec3(id.xy,i),result);
 	}
