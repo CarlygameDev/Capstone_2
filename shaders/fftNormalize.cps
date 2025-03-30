@@ -21,6 +21,7 @@ vec4 Permute(vec4 data, uvec3 id) {
 }
 
 void main() {
+
     for (int i = 0; i < 4; ++i) {
         uvec3 id = gl_GlobalInvocationID;
         ivec2 coord = ivec2(id.xy);
@@ -51,6 +52,8 @@ void main() {
           
         imageStore(Displacement, ivec3(coord, i), vec4(displacement, foam));
         imageStore(Slope, ivec3(coord, i), vec4(slopes, 0, 0));
+     //  imageStore(Slope, ivec3(coord, i), htildeSlope);
+     //  imageStore(Displacement, ivec3(coord, i), htildeDisplacement);
     }
 }
 

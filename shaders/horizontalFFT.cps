@@ -18,6 +18,7 @@ vec2 ComplexMult(vec2 a, vec2 b) {
 
 void IFFT(uint i, vec2 id)
 {
+
 	vec4 data = imageLoad(PrecomputedData,ivec2(Step, id.x));
 	ivec2 inputsIndices = ivec2(data.ba);
 	if (PingPong)
@@ -42,16 +43,16 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 void main() {
     ivec3 id = ivec3(gl_GlobalInvocationID.xyz);
-    ivec2 coord = id.xy;
+   // ivec2 coord = id.xy;
 
 
-     for (int i = 0; i < 8; ++i) {
+
 
   
-	 IFFT(i, id.xy);
+	 IFFT(id.z, id.xy);
 
   
-    }
+    
 }
 
 

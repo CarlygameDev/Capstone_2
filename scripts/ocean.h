@@ -243,22 +243,25 @@ void OceanFFTGenerator::IFFT(ComputeShader horizontal, ComputeShader vertical) {
     glBindImageTexture(1, pingPongTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
     glBindImageTexture(2, twiddleTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
     horizontal.use();
+    int depth = DomainSizes.size() * 2;
+
     for (int i = 0; i < logSize; i++)
     {
         pingPong = !pingPong;
         horizontal.setInt("Step", i);
         horizontal.setBool("PingPong", pingPong);
-        glDispatchCompute( N / 8, N / 8, 1);
+        glDispatchCompute( N / 8, N / 8, depth);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     }
 
     vertical.use();
+
     for (int i = 0; i < logSize; i++)
     {
         pingPong = !pingPong;
         vertical.setInt("Step", i);
         vertical.setBool("PingPong", pingPong);
-        glDispatchCompute(N / 8, N / 8, 1);
+        glDispatchCompute(N / 8, N / 8,depth );
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     }
 
