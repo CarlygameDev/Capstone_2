@@ -156,6 +156,8 @@
   <ItemGroup>
     <None Include="shaders\afu.cs" />
     <None Include="shaders\basic.frag" />
+    <None Include="shaders\oceanFFT.tcs" />
+    <None Include="shaders\oceanFFT.tes" />
     <None Include="shaders\SpectrumConjugate.cps" />
     <None Include="shaders\horizontalFFT.cps" />
     <None Include="shaders\fftNormalize.cps" />
@@ -175,8 +177,10 @@
     <None Include="shaders\Spectrum_INIT.cps" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="shaders\PP.vert" />
     <Text Include="shaders\backup.txt" />
     <Text Include="shaders\precomputeDiddyFactor.cps" />
+    <Text Include="shaders\PP.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

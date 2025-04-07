@@ -18,7 +18,7 @@ uniform vec3 _FoamColor = vec3(0.9, 0.9, 1.0);       // Light, foamy color.
 uniform float _NormalStrength = 1.0;
 uniform float _Roughness = 0.075;
 uniform float _FoamRoughnessModifier = 0.0;
-uniform float _EnvironmentLightStrength = 1.0;
+uniform float _EnvironmentLightStrength = 0.5;
 uniform float _HeightModifier = 1.0;
 uniform float _BubbleDensity = 1.0;
 uniform float _WavePeakScatterStrength = 1.0;
@@ -26,7 +26,7 @@ uniform float _ScatterStrength = 1.0;
 uniform float _ScatterShadowStrength = 0.5;
 uniform float _DisplacementDepthAttenuation = 1.0;
 
-uniform mat4 model;
+uniform mat4 inverse_model;
 uniform samplerCube _EnvironmentMap;
 uniform sampler2DArray _DisplacementTextures;  
 uniform sampler2DArray _SlopeTextures;
@@ -73,7 +73,7 @@ void main() {
     vec3 macroNormal = vec3(0.0, 1.0, 0.0);
     vec3 mesoNormal = normalize(vec3(-slopes.x, 1.0, -slopes.y));
     mesoNormal = normalize(mix(macroNormal, mesoNormal, pow(clamp(depth, 0.0, 1.0), _DisplacementDepthAttenuation)));
-    mesoNormal = normalize(mat3(transpose(inverse(model))) * mesoNormal);
+  //  mesoNormal = normalize(mat3(inverse_model) * mesoNormal);
 
     // Lighting calculations.
     float NdotL = clamp(dot(mesoNormal, lightDir), 0.0, 1.0);
@@ -112,11 +112,11 @@ void main() {
 
     // Combine specular, environment, and scattering contributions.
     vec3 colorOutput = (1-F)*scatter+specular+envReflection*F ;
- //  vec3 colorOutput =  vec3(colorOutput) ;
+
     colorOutput = max(vec3(0.0), colorOutput);
 
     // Blend in the foam color based on foam factor.
-  //  colorOutput = mix(colorOutput, _FoamColor, clamp(foam, 0.0, 1.0));
+    colorOutput = mix(colorOutput, _FoamColor, clamp(foam, 0.0, 1.0));
 
     FragColor = vec4(colorOutput, 1.0);
 }

@@ -15,7 +15,7 @@ struct SpectrumParameters {
 };
 
 layout(local_size_x = 16, local_size_y = 16) in;  // Workgroup size
-layout(rgba32f, binding = 0) uniform image2DArray Spectrums;
+layout(rgba16f, binding = 0) uniform image2DArray Spectrums;
 layout(std430, binding = 1) buffer SpectrumsBuffer {
     SpectrumParameters _Spectrums[];
 };

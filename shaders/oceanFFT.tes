@@ -1,0 +1,61 @@
+#version 430
+layout(quads, equal_spacing, ccw) in;
+
+in vec3 tcPosition[];
+
+
+out vec2 uv;
+out vec3 pos;
+out float depth;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+uniform vec3 cameraPos;
+// Displacement mapping parameters.
+uniform sampler2DArray _DisplacementTextures; 
+uniform float _DisplacementDepthAttenuation = 1.0;
+
+float Linear01Depth(float viewZ, float farPlane) {
+    return clamp(-viewZ / farPlane, 0.0, 1.0);
+}
+
+
+void main() {
+    float u = gl_TessCoord.x;
+    float v = gl_TessCoord.y;
+
+    vec4 pBL = gl_in[0].gl_Position;
+    vec4 pBR = gl_in[1].gl_Position;
+    vec4 pTL = gl_in[2].gl_Position;
+    vec4 pTR = gl_in[3].gl_Position;
+
+    vec4 uVec = pBR - pBL;
+    vec4 vVec = pTL - pBL;
+    vec4 normal = normalize(vec4(cross(vVec.xyz, uVec.xyz), 0));
+
+    vec4 p0 = mix(pBL, pBR, u);
+    vec4 p1 = mix(pTL, pTR, u);
+   vec4 p = mix(p0, p1, v);
+
+
+    vec4 worldPos = model * p;
+    worldPos.xz+= cameraPos.xz;
+    uv =  0.01*worldPos.xz;
+vec4 view_Pos = view * worldPos;
+    depth = 1-Linear01Depth(view_Pos.z,1500);
+    vec3 displacement = vec3(0.0);
+   
+    for (int i = 0; i < 4; ++i) {
+        displacement += textureLod(_DisplacementTextures, vec3(uv, i), 0).rgb;
+    }
+    displacement *= _DisplacementDepthAttenuation;
+
+    
+
+    pos = mix(worldPos.xyz, worldPos.xyz + displacement, pow(depth,1));
+    gl_Position = projection * view * vec4(pos, 1.0);
+}
+
+
+

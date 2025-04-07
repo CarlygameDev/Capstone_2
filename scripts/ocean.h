@@ -67,6 +67,7 @@ public:
  
  void setDomain(ShaderBase shader);
 void createFFTWaterPlane(const int SIZE);
+void RenderOcean();
 private:
    
     float RandomFloat(float min, float max);
@@ -109,17 +110,17 @@ OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
     
     //Textures 
  ///////////////////////////////////////
-    initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA32F, true);  // ARGBHalf in Unity
-    spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA32F, true);     
-     pingPongTextures   = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA32F, true);            
-    displacementTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA32F, true);     // ARGBHalf
-    slopeTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RG32F, true);              // RGHalf
+    initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA16F, true);  // ARGBHalf in Unity
+    spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA16F, true);     
+     pingPongTextures   = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA16F, true);            
+    displacementTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA16F, true);     // ARGBHalf
+    slopeTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RG16F, true);              // RGHalf
    
 
 
     glGenTextures(1, &twiddleTexture);
     glBindTexture(GL_TEXTURE_2D, twiddleTexture);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, log2(textureSize), textureSize); // log2(FFTSize) FFT stages, FFTSize entries
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, log2(textureSize), textureSize); // log2(FFTSize) FFT stages, FFTSize entries
 
     // Set texture parameters (use NEAREST filtering to avoid interpolation)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -128,7 +129,7 @@ OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     // Bind it to the compute shader
-    glBindImageTexture(0, twiddleTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(0, twiddleTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
     ComputeShader precomputeDiddy("precomputeDiddyFactor.cps");
     precomputeDiddy.use();
@@ -216,7 +217,7 @@ void OceanFFTGenerator::CalculateSpectrum(ComputeShader Spectrum, ComputeShader 
  spectrumBindBuffer(1);
    
     setDomain(Spectrum);
-    glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
+    glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
     glDispatchCompute(N / 16,  N/ 16, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     conjugate.use();
@@ -227,9 +228,9 @@ void OceanFFTGenerator::CalculateSpectrum(ComputeShader Spectrum, ComputeShader 
 }
 void OceanFFTGenerator::EvolveSpectrum() {
 
-    glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
-    glBindImageTexture(1, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
-    glDispatchCompute(N / 16, N / 16, 1);
+    glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    glBindImageTexture(1, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    glDispatchCompute(N / 16, N / 16, DomainSizes.size());
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
   
 }
@@ -239,9 +240,9 @@ void OceanFFTGenerator::IFFT(ComputeShader horizontal, ComputeShader vertical) {
 
    
 
-    glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
-    glBindImageTexture(1, pingPongTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
-    glBindImageTexture(2, twiddleTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+    glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    glBindImageTexture(1, pingPongTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    glBindImageTexture(2, twiddleTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
     horizontal.use();
     int depth = DomainSizes.size() * 2;
 
@@ -281,10 +282,10 @@ void OceanFFTGenerator::IFFT(ComputeShader horizontal, ComputeShader vertical) {
 }
 void OceanFFTGenerator::AssembleTextures(ComputeShader shader) {
     shader.use();
-    glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-    glBindImageTexture(1, displacementTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA32F);
-    glBindImageTexture(2, slopeTextures, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
-    glDispatchCompute(N/ 16, N / 16, 1);
+    glBindImageTexture(0, spectrumTextures, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
+    glBindImageTexture(1, displacementTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    glBindImageTexture(2, slopeTextures, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG16F);
+    glDispatchCompute(N / 16, N / 16, DomainSizes.size());
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
  
@@ -301,8 +302,8 @@ glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
     glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
     glBindTexture(GL_TEXTURE_2D_ARRAY, slopeTextures);
     glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
-    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+ //   glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
+ //   glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
@@ -314,10 +315,13 @@ glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
     glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
     glActiveTexture(GL_TEXTURE5);
     glBindTexture(GL_TEXTURE_2D_ARRAY, twiddleTexture);
-    glBindVertexArray(planeModel);
-    glDrawElements(GL_TRIANGLES, indices, GL_UNSIGNED_INT, 0);
+  
 }
-
+void OceanFFTGenerator::RenderOcean() {
+    glPatchParameteri(GL_PATCH_VERTICES, 4);
+       glBindVertexArray(planeModel);
+       glDrawElements(GL_PATCHES, indices, GL_UNSIGNED_INT, 0);
+}
 
 void OceanFFTGenerator::debug() {
     DisplaySpectrumSettings settings[8];
@@ -421,8 +425,8 @@ void OceanFFTGenerator::createFFTWaterPlane(const int SIZE) {
     // Generate vertices
     for (int z = 0; z < SIZE; ++z) {
         for (int x = 0; x < SIZE; ++x) {
-            float xPos = (x - SIZE / 2);
-            float zPos = (z - SIZE / 2);
+            float xPos = (x - SIZE / 2)*20;
+            float zPos = (z - SIZE / 2)*20;
 
             vertices.push_back(xPos);
             vertices.push_back(0);
@@ -430,7 +434,27 @@ void OceanFFTGenerator::createFFTWaterPlane(const int SIZE) {
         }
     }
 
-    // Generate indices for a grid
+    //// Generate indices for a grid
+    //for (int z = 0; z < SIZE - 1; ++z) {
+    //    for (int x = 0; x < SIZE - 1; ++x) {
+    //        int topLeft = z * SIZE + x;
+    //        int topRight = topLeft + 1;
+    //        int bottomLeft = (z + 1) * SIZE + x;
+    //        int bottomRight = bottomLeft + 1;
+
+    //        // First triangle
+    //        indices.push_back(topLeft);
+    //        indices.push_back(bottomLeft);
+    //        indices.push_back(topRight);
+
+    //        // Second triangle
+    //        indices.push_back(topRight);
+    //        indices.push_back(bottomLeft);
+    //        indices.push_back(bottomRight);
+    //    }
+    //}
+    
+    // Generate indices for quad patches (4 vertices per quad)
     for (int z = 0; z < SIZE - 1; ++z) {
         for (int x = 0; x < SIZE - 1; ++x) {
             int topLeft = z * SIZE + x;
@@ -438,15 +462,13 @@ void OceanFFTGenerator::createFFTWaterPlane(const int SIZE) {
             int bottomLeft = (z + 1) * SIZE + x;
             int bottomRight = bottomLeft + 1;
 
-            // First triangle
-            indices.push_back(topLeft);
-            indices.push_back(bottomLeft);
-            indices.push_back(topRight);
+            // Expected order: bottom-left, bottom-right, top-left, top-right
+            indices.push_back(bottomLeft);  // gl_in[0]
+            indices.push_back(bottomRight); // gl_in[1]
+            indices.push_back(topLeft);     // gl_in[2]
+            indices.push_back(topRight);    // gl_in[3]
 
-            // Second triangle
-            indices.push_back(topRight);
-            indices.push_back(bottomLeft);
-            indices.push_back(bottomRight);
+
         }
     }
 

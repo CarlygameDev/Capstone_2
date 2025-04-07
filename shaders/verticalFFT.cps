@@ -1,9 +1,9 @@
 #version 430
 
 // Input texture holding complex values stored in the xy channels.
-layout(rgba32f, binding = 0) uniform image2DArray Buffer0;
-layout(rgba32f, binding = 1) uniform image2DArray Buffer1;
-layout(rgba32f, binding = 2) uniform image2D PrecomputedData;
+layout(rgba16f, binding = 0) uniform image2DArray Buffer0;
+layout(rgba16f, binding = 1) uniform image2DArray Buffer1;
+layout(rgba16f, binding = 2) uniform image2D PrecomputedData;
 uniform bool PingPong;
 uniform int Step;
 

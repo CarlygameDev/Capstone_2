@@ -1,7 +1,7 @@
 #version 430
 
 // Input texture holding complex values stored in the xy channels.
-layout(rgba32f, binding = 0) uniform image2D PrecomputeBuffer;
+layout(rgba16f, binding = 0) uniform image2D PrecomputeBuffer;
 
 const float PI = 3.1415926;
 uniform int Size;

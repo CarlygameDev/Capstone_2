@@ -3,9 +3,9 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 // Texture bindings
-layout(rgba32f, binding = 0) uniform image2DArray uInput;
-layout(rgba32f, binding = 1) uniform image2DArray Displacement;
-layout(rg32f, binding = 2) uniform image2DArray Slope;
+layout(rgba16f, binding = 0) uniform image2DArray uInput;
+layout(rgba16f, binding = 1) uniform image2DArray Displacement;
+layout(rg16f, binding = 2) uniform image2DArray Slope;
 
 
 // Uniform parameters
@@ -13,19 +13,19 @@ layout(rg32f, binding = 2) uniform image2DArray Slope;
 uniform float _FoamDecayRate=0.0175;
 uniform float _FoamBias=0.85;
 uniform float _FoamThreshold;
-uniform float _FoamAdd=0.1;
+uniform float _FoamAdd=0.01;
 
 // Permutation function
 vec4 Permute(vec4 data, uvec3 id) {
     return data * (1.0 - 2.0 * ((id.x + id.y) % 2));
 }
-
+float bla [4]= {0.04,-0.04,-0.46,-0.38};
 void main() {
 
-    for (int i = 0; i < 4; ++i) {
+
         uvec3 id = gl_GlobalInvocationID;
         ivec2 coord = ivec2(id.xy);
-   
+   uint i = id.z;
         vec4 htildeDisplacement = Permute(imageLoad(uInput, ivec3(coord,i*2)), id);
         vec4 htildeSlope = Permute(imageLoad(uInput,ivec3(coord,i*2+1)), id);
 
@@ -54,7 +54,7 @@ void main() {
         imageStore(Slope, ivec3(coord, i), vec4(slopes, 0, 0));
      //  imageStore(Slope, ivec3(coord, i), htildeSlope);
      //  imageStore(Displacement, ivec3(coord, i), htildeDisplacement);
-    }
+    
 }
 
 

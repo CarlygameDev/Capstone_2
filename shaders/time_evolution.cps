@@ -1,7 +1,7 @@
 ﻿#version 430
 layout(local_size_x = 16, local_size_y = 16) in;
-layout(rgba32f, binding = 0) uniform image2DArray input;   
-layout(rgba32f, binding = 1) uniform image2DArray _output;  
+layout(rgba16f, binding = 0) uniform image2DArray input;   
+layout(rgba16f, binding = 1) uniform image2DArray _output;  
 
 uniform int domains[4]; 
 
@@ -19,8 +19,9 @@ vec2 complex_mult(vec2 a, vec2 b) {
 void main() {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
     ivec2 texSize = imageSize(input).xy;
+uint i =gl_GlobalInvocationID.z;
     int N = texSize.x;
-    for (int i = 0; i < 4; ++i) {
+
     // Calculate wavevector k (matches spectrum generation)
     vec4 initial_signal=imageLoad(input, ivec3(coord,i));
     vec2 h0= initial_signal.xy;
@@ -65,5 +66,5 @@ vec2 htilde = complex_mult(h0, exponent) + complex_mult(h0_conj, vec2(exponent.x
 
     imageStore(_output, ivec3(coord,i*2), vec4(htildeDisplacementX,htildeDisplacementZ));
      imageStore(_output, ivec3(coord,i*2+1), vec4(htildeSlopeX,htildeSlopeZ));
-    }
+    
 }

@@ -98,7 +98,7 @@ int main()
     // -----------
 
     Model ocean("ocean/ocean.obj");
-
+    Model boat("BoatModel.FBX");
 
 
     float scale_factor = 100;
@@ -151,21 +151,47 @@ int main()
     
    
 
-    Shader oceanShader("oceanFFT.vert", "oceanFFT.frag");
+    Shader oceanShader("oceanFFT.vert", "oceanFFT.frag",nullptr,"oceanFFT.tcs","oceanFFT.tes");
     oceanShader.use();
    
     oceanShader.setVec3("_lightDir",sunDirection);
     oceanShader.setInt("_EnvironmentMap",2);
     oceanShader.setInt("_DisplacementTextures", 0);
     oceanShader.setInt("_SlopeTextures", 1);
+   
     ComputeShader normalizeFFT("fftNormalize.cps");
     normalizeFFT.use();
 
-    
 
+    Shader screenShader("PP.vert","PP.frag");
+
+    // framebuffer configuration
+   // -------------------------
+    unsigned int framebuffer;
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    // create a color attachment texture
+    unsigned int textureColorbuffer;
+    glGenTextures(1, &textureColorbuffer);
+    glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
+    // create a renderbuffer object for depth and stencil attachment (we won't be sampling these)
+    unsigned int rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT); // use a single renderbuffer object for both a depth AND stencil buffer.
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo); // now actually attach it
+    // now that we actually created the framebuffer and added all attachments we want to check if it is actually complete now
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  
     // render loop
     // -----------
-  //  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     int fCounter = 0;
     while (!glfwWindowShouldClose(window))
     {
@@ -200,26 +226,28 @@ int main()
        
 
 
-
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glEnable(GL_DEPTH_TEST);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // configure transformation matrices
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 5000.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
         
         textureLoad.use();
- textureLoad.setInt("textureArray",1);
+ textureLoad.setInt("textureArray",0);
  glm::mat4 model = glm::mat4();
+
   // glm::mat4 model= glm::translate(glm::mat4(1), glm::vec3(-512, 0, 0));
  textureLoad.setMat4("model", model);
         textureLoad.setMat4("projection", projection);
         textureLoad.setMat4("view", view);
-        oceanSettings.bindTextures();
+      //  oceanSettings.bindTextures();
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
         
-       
+        boat.Draw(textureLoad);
      
        // model = glm::scale(model, glm::vec3(10));
         //textureLoad.setMat4("model",glm::translate(glm::mat4(1), glm::vec3(-512,0,0)));
@@ -230,17 +258,20 @@ int main()
    
         oceanShader.use();
        model = glm::mat4();
+       model = glm::scale(model, glm::vec3(1,1,1));
         oceanShader.setMat4("model", model);
+        oceanShader.setMat4("inverse_model",glm:: transpose(glm::inverse(glm::mat3(model))));
+        
         oceanShader.setMat4("projection", projection);
         oceanShader.setMat4("view", view);
         oceanShader.setVec3("cameraPos", camera.Position);
-   //     oceanSettings.bindTextures();
-     ocean.Draw(oceanShader);
+        oceanSettings.bindTextures();
+       
+        oceanSettings.RenderOcean();
+     //ocean.Draw(oceanShader);
         //renderCube();
 
-
-
-
+        
         // draw skybox as last
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
         skyboxShader.use();
@@ -254,6 +285,17 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
         glDepthFunc(GL_LESS); // set depth function back to default
+
+
+        // now bind back to default framebuffer and draw a quad plane with the attached framebuffer color texture
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_DEPTH_TEST); // disable depth test so screen-space quad isn't discarded due to depth test.
+       
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        screenShader.use();
+        glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+        renderQuad();
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
