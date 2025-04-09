@@ -44,6 +44,47 @@ float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
 unsigned int planeVAO;
 
+// sun animation helper functions
+glm::vec3 calculateSunDirection(float time) {
+    float angle = glm::radians(time * 360.0f); // Degrees to radians
+    return glm::vec3(glm::sin(angle), glm::cos(angle), 0.0f);
+}
+
+glm::vec3 calculateSunColor(float time) {
+    time = glm::clamp(time, 0.0f, 1.0f); // Ensure time is within [0, 1]
+
+    // Define the base colors for each phase
+    // Night: the sun is off.
+    glm::vec3 nightColor   = glm::vec3(1.0f, 1.0f, 1.0f);
+    // Sunrise: almost white with a warm, orange tint.
+    glm::vec3 sunriseColor = glm::vec3(1.0f, 0.8f, 0.4f);
+    // Midday: pure white.
+    glm::vec3 middayColor  = glm::vec3(1.0f, 1.0f, 1.0f);
+    // Sunset: same as sunrise.
+    glm::vec3 sunsetColor  = glm::vec3(1.0f, 0.905f, 0.720f);
+
+    if (time < 0.15f) { 
+        // Early Night: before sunrise, the sun is off.
+        return nightColor;
+    } else if (time < 0.4f) { 
+        // Sunrise: Transition from night to sunrise color between 0.15 and 0.4.
+        float factor = (time - 0.15f) / (0.4f - 0.15f);
+        return glm::mix(nightColor, sunriseColor, factor);
+    } else if (time < 0.6f) { 
+        // Midday: Transition from sunrise to full midday white between 0.4 and 0.6.
+        float factor = (time - 0.4f) / (0.6f - 0.4f);
+        return glm::mix(sunriseColor, middayColor, factor);
+    } else if (time < 0.75f) { 
+        // Sunset: Transition from midday white to sunset color between 0.6 and 0.75.
+        float factor = (time - 0.6f) / (0.75f - 0.6f);
+        return glm::mix(middayColor, sunsetColor, factor);
+    } else { 
+        // Late Night: Transition from sunset back to night between 0.75 and 1.0.
+        float factor = (time - 0.75f) / (1.0f - 0.75f);
+        return glm::mix(sunsetColor, nightColor, factor);
+    }
+    
+}
 
 int main()
 {
@@ -94,6 +135,7 @@ int main()
 
     Shader textureLoad("vTexture.vert", "vTexture.frag");
     Shader skyboxShader("skybox.vert", "skybox.frag");
+
     // load models
     // -----------
 
@@ -112,18 +154,41 @@ int main()
     textureLoad.setVec3("sunDirection", sunDirection);
     vector<std::string> faces
     {
-       fileFinder::getTexture("mountain_skybox/right.jpg"),
-      fileFinder::getTexture("mountain_skybox/left.jpg"),
-       fileFinder::getTexture("mountain_skybox/top.jpg"),
+        fileFinder::getTexture("mountain_skybox/right.jpg"),
+        fileFinder::getTexture("mountain_skybox/left.jpg"),
+        fileFinder::getTexture("mountain_skybox/top.jpg"),
         fileFinder::getTexture("mountain_skybox/bottom.jpg"),
         fileFinder::getTexture("mountain_skybox/front.jpg"),
         fileFinder::getTexture("mountain_skybox/back.jpg"),
     };
     unsigned int skyboxVAO, skyboxVBO, cubemapTexture;
     load_Skybox(&skyboxVAO, &skyboxVBO, &cubemapTexture, faces);
+
+    vector<std::string> maskFaces{
+        fileFinder::getTexture("mountain_mask/right.jpg"),
+        fileFinder::getTexture("mountain_mask/left.jpg"),
+        fileFinder::getTexture("mountain_mask/top.jpg"),
+        fileFinder::getTexture("mountain_mask/bottom.jpg"),
+        fileFinder::getTexture("mountain_mask/front.jpg"),
+        fileFinder::getTexture("mountain_mask/back.jpg")
+    };
+    unsigned int mountainMaskCubemap = loadCubemap(maskFaces); 
+    
+    vector<std::string> starFaces{
+        fileFinder::getTexture("stars_skybox/right.png"), 
+        fileFinder::getTexture("stars_skybox/left.png"), 
+        fileFinder::getTexture("stars_skybox/top.png"), 
+        fileFinder::getTexture("stars_skybox/bot.png"), 
+        fileFinder::getTexture("stars_skybox/front.png"), 
+        fileFinder::getTexture("stars_skybox/back.png") 
+    };
+    unsigned int starboxTexture = loadCubemap(starFaces);
+
     skyboxShader.use();
     skyboxShader.setVec3("sunDirection", sunDirection);
     skyboxShader.setVec3("sunColor", sunColor);
+    skyboxShader.setInt("mountainMask", 2);
+    skyboxShader.setInt("starbox", 3);
     glPatchParameteri(GL_PATCH_VERTICES, 3);  // If using triangles (3 vertices per patch)
 
 
@@ -207,6 +272,13 @@ int main()
         else {
             fCounter++;
         }
+
+        // calculate normalized time of day for day/night cycle
+        const float dayCycleSpeed = 0.01f; 
+        const float sunCycleSpeed = 0.01f;
+        float timeOfDay = fmod(currentFrame * dayCycleSpeed, 1.0f);
+        float sunTime = fmod(currentFrame * sunCycleSpeed, 1.0f);
+       
         // input
         // -----
         processInput(window);
@@ -278,6 +350,24 @@ int main()
         view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
         skyboxShader.setMat4("view", view);
         skyboxShader.setMat4("projection", projection);
+
+        // calculate your uniform values and pass them in
+        glm::vec3 sunDirection = calculateSunDirection(sunTime); 
+        glm::vec3 sunColor = calculateSunColor(sunTime);
+        float sunSize = 0.989f;
+        skyboxShader.setFloat("timeOfDay", timeOfDay);
+        skyboxShader.setVec3("sunDirection", sunDirection);
+        skyboxShader.setVec3("sunColor", sunColor);
+        skyboxShader.setFloat("sunSize", sunSize);
+        
+        // Bind the mountain mask cubemap to texture unit 2
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, mountainMaskCubemap);
+
+        // Bind the starbox cubemap to texture unit 3
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, starboxTexture);
+
         // skybox cube
         glBindVertexArray(skyboxVAO);
         glActiveTexture(GL_TEXTURE0);
