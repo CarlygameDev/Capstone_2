@@ -110,6 +110,7 @@ OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
     
     //Textures 
  ///////////////////////////////////////
+    //note does it need the F?
     initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA16F, true);  // ARGBHalf in Unity
     spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA16F, true);     
      pingPongTextures   = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA16F, true);            
