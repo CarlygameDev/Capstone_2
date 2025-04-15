@@ -64,7 +64,8 @@ public:
  void IFFT(ComputeShader horizontal, ComputeShader vertical);
  void AssembleTextures(ComputeShader shader);
  void bindTextures();
- 
+ int const DisplacementTexture();
+ int const SlopeTexture();
  void setDomain(ShaderBase shader);
 void createFFTWaterPlane(const int SIZE);
 void RenderOcean();
@@ -296,7 +297,12 @@ void OceanFFTGenerator::AssembleTextures(ComputeShader shader) {
 void  OceanFFTGenerator::setDomain(ShaderBase shader) {
     glUniform1iv(glGetUniformLocation(shader.ID, "domains"), DomainSizes.size(), DomainSizes.data());
 }
-
+int const OceanFFTGenerator::DisplacementTexture () {
+    return displacementTextures;
+}
+int const OceanFFTGenerator:: SlopeTexture() {
+    return slopeTextures;
+}
 void OceanFFTGenerator::bindTextures() {
 
 glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
@@ -310,12 +316,12 @@ glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
     glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextures);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D_ARRAY, slopeTextures);
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, spectrumTextures);
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
-    glActiveTexture(GL_TEXTURE5);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, twiddleTexture);
+    //glActiveTexture(GL_TEXTURE3);
+    //glBindTexture(GL_TEXTURE_2D_ARRAY, spectrumTextures);
+    //glActiveTexture(GL_TEXTURE4);
+    //glBindTexture(GL_TEXTURE_2D_ARRAY, initial_spectrumTextures);
+    //glActiveTexture(GL_TEXTURE5);
+    //glBindTexture(GL_TEXTURE_2D_ARRAY, twiddleTexture);
   
 }
 void OceanFFTGenerator::RenderOcean() {
@@ -426,8 +432,8 @@ void OceanFFTGenerator::createFFTWaterPlane(const int SIZE) {
     // Generate vertices
     for (int z = 0; z < SIZE; ++z) {
         for (int x = 0; x < SIZE; ++x) {
-            float xPos = (x - SIZE / 2)*20;
-            float zPos = (z - SIZE / 2)*20;
+            float xPos = (x - SIZE / 2)*5;
+            float zPos = (z - SIZE / 2)*5;
 
             vertices.push_back(xPos);
             vertices.push_back(0);

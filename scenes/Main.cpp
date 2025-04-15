@@ -156,6 +156,7 @@ int main()
    
     oceanShader.setVec3("_lightDir",sunDirection);
     oceanShader.setInt("_EnvironmentMap",2);
+    oceanShader.setInt("_SceneColor", 3);
     oceanShader.setInt("_DisplacementTextures", 0);
     oceanShader.setInt("_SlopeTextures", 1);
    
@@ -167,6 +168,8 @@ int main()
     screenShader.use();
     screenShader.setInt("screenTexture",0);
     screenShader.setInt("depthTexture", 1);
+    screenShader.setInt("DisplacementTextures", 2);
+    
     // framebuffer configuration
    // -------------------------
     unsigned int framebuffer;
@@ -263,18 +266,7 @@ int main()
     //  ocean.Draw(textureLoad);
 
    
-        oceanShader.use();
-       model = glm::mat4();
-       model = glm::scale(model, glm::vec3(1,1,1));
-        oceanShader.setMat4("model", model);
-        oceanShader.setMat4("inverse_model",glm:: transpose(glm::inverse(glm::mat3(model))));
-        
-        oceanShader.setMat4("projection", projection);
-        oceanShader.setMat4("view", view);
-        oceanShader.setVec3("cameraPos", camera.Position);
-        oceanSettings.bindTextures();
-       
-        oceanSettings.RenderOcean();
+    
      //ocean.Draw(oceanShader);
         //renderCube();
 
@@ -282,8 +274,8 @@ int main()
         // draw skybox as last
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
         skyboxShader.use();
-        view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
-        skyboxShader.setMat4("view", view);
+         auto skybox_view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
+        skyboxShader.setMat4("view", skybox_view);
         skyboxShader.setMat4("projection", projection);
         // skybox cube
         glBindVertexArray(skyboxVAO);
@@ -292,6 +284,21 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
         glDepthFunc(GL_LESS); // set depth function back to default
+
+        oceanShader.use();
+        model = glm::mat4();
+        model = glm::scale(model, glm::vec3(1, 1, 1));
+        oceanShader.setMat4("model", model);
+        oceanShader.setMat4("inverse_model", glm::transpose(glm::inverse(glm::mat3(model))));
+        
+        oceanShader.setMat4("projection", projection);
+        oceanShader.setMat4("view", view);
+        oceanShader.setVec3("cameraPos", camera.Position);
+        oceanShader.setFloat("_Time",currentFrame);
+        oceanSettings.bindTextures();
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+        oceanSettings.RenderOcean();
 
 
         // now bind back to default framebuffer and draw a quad plane with the attached framebuffer color texture
@@ -311,6 +318,8 @@ int main()
         glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, depthTexture);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, oceanSettings.DisplacementTexture());
         renderQuad();
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)

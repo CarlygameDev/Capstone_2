@@ -25,11 +25,12 @@ uniform float _WavePeakScatterStrength = 1.0;
 uniform float _ScatterStrength = 1.0;
 uniform float _ScatterShadowStrength = 0.5;
 uniform float _DisplacementDepthAttenuation = 1.0;
-
+uniform float _UnderwaterFadeStrength=2;
 uniform mat4 inverse_model;
 uniform samplerCube _EnvironmentMap;
 uniform sampler2DArray _DisplacementTextures;  
 uniform sampler2DArray _SlopeTextures;
+uniform sampler2D _SceneColor;
 
 // Smith masking using the Beckmann distribution
 float SmithMaskingBeckmann(vec3 H, vec3 S, float roughness) {
@@ -115,8 +116,28 @@ void main() {
 
     colorOutput = max(vec3(0.0), colorOutput);
 
-    // Blend in the foam color based on foam factor.
     colorOutput = mix(colorOutput, _FoamColor, clamp(foam, 0.0, 1.0));
+
+     float waterSurfaceHeight = pos.y;
+    
+    // Check if camera is below water surface at this fragment's position
+    bool isUnderwater = cameraPos.y < waterSurfaceHeight;
+    
+    // Optional: Add depth-based attenuation for underwater effects
+    float depthUnderwater = waterSurfaceHeight - cameraPos.y;
+    float depthAttenuation = clamp(depthUnderwater / _MaxWaterDepth, 0.0, 1.0);
+
+    // --- Underwater Effects ---
+    vec3 underwaterColor = colorOutput * _UnderwaterTint;
+    underwaterColor += _UnderwaterScatter * depthAttenuation; // Scattering effect
+    
+    // Apply underwater influence (lerp with attenuation or binary)
+    float underwaterFactor = float(isUnderwater) * (1.0 - exp(-depthUnderwater * _DepthSharpness));
+    colorOutput = mix(colorOutput, underwaterColor, underwaterFactor);
+
+
+
+
 
     FragColor = vec4(colorOutput, 1.0);
 }
