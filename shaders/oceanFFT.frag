@@ -31,6 +31,7 @@ uniform samplerCube _EnvironmentMap;
 uniform sampler2DArray _DisplacementTextures;  
 uniform sampler2DArray _SlopeTextures;
 
+
 // Smith masking using the Beckmann distribution
 float SmithMaskingBeckmann(vec3 H, vec3 S, float roughness) {
     float hdots = max(0.001, clamp(dot(H, S), 0.0, 1.0));

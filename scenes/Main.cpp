@@ -11,6 +11,9 @@
 #include <camera.h>
 #include <Model.h>
 #include <ocean.h>
+#include "cloudSystem.h"
+#include "rainSystem.h"
+#include "weatherController.h"
 #define PI 3.14
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -20,7 +23,7 @@ unsigned int loadTexture(char const* path);
 unsigned int loadTexture(char const* path);
 void load_VAO_VBO(unsigned int* vao, unsigned int* vbo, const float* vertices, const int* index);
 unsigned int loadCubemap(vector<std::string> faces);
-void load_Skybox(unsigned int* vao, unsigned int* vbo,unsigned int* cube_tex, vector<std::string> names);
+void load_Skybox(unsigned int* vao, unsigned int* vbo,unsigned int* cube_tex, vector<std::string> names); 
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -38,6 +41,10 @@ bool shadowsKeyPressed = false;
 float lastX = 800.0f / 2.0;
 float lastY = 600.0 / 2.0;
 
+CloudSystem* cloudSystem;
+RainSystem* rainSystem;
+WeatherController* weatherController;
+bool cycleWeatherPressed = false;
 
 // timing
 float deltaTime = 0.0f;	// time between current frame and last frame
@@ -126,8 +133,13 @@ int main()
     skyboxShader.setVec3("sunColor", sunColor);
     glPatchParameteri(GL_PATCH_VERTICES, 3);  // If using triangles (3 vertices per patch)
 
+    // Initialize the cloud and rain systems
+    cloudSystem = new CloudSystem(64);
+    rainSystem = new RainSystem(10000);
 
-
+    // Create weather controller
+    weatherController = new WeatherController(cloudSystem, rainSystem);
+    weatherController->SetWindDirection(glm::normalize(glm::vec3(sunDirection.x, 0.0f, sunDirection.z)));
    
    
    
@@ -218,6 +230,10 @@ int main()
         // -----
         processInput(window);
 
+        // Update weather controller
+        weatherController->Update(deltaTime);
+
+
         // render
         // ------
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -293,6 +309,12 @@ int main()
         glBindVertexArray(0);
         glDepthFunc(GL_LESS); // set depth function back to default
 
+        // Render clouds after skybox
+        cloudSystem->Render(projection, view, camera.Position, cubemapTexture, currentFrame);
+
+        // Render rain system
+        rainSystem->Render(projection, view, camera.Position, currentFrame);
+
 
         // now bind back to default framebuffer and draw a quad plane with the attached framebuffer color texture
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -323,6 +345,11 @@ int main()
 
     // optional: de-allocate all resources once they've outlived their purpose:
     // ------------------------------------------------------------------------
+    
+    // Clean up cloud system
+    delete cloudSystem;
+    delete rainSystem;
+    delete weatherController;
 
     glfwTerminate();
     return 0;
@@ -356,6 +383,57 @@ void processInput(GLFWwindow* window)
     {
         shadowsKeyPressed = false;
     }
+
+    // Cloud control with C and V keys
+    static bool increaseCloudsPressed = false;
+    static bool decreaseCloudsPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS && !increaseCloudsPressed) {
+        // Increase cloud coverage
+        cloudSystem->cloudCoverage = std::min(cloudSystem->cloudCoverage + 0.1f, 1.0f);
+        increaseCloudsPressed = true;
+        std::cout << "Cloud coverage: " << cloudSystem->cloudCoverage << std::endl;
+    }
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_RELEASE) {
+        increaseCloudsPressed = false;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS && !decreaseCloudsPressed) {
+        // Decrease cloud coverage
+        cloudSystem->cloudCoverage = std::max(cloudSystem->cloudCoverage - 0.1f, 0.0f);
+        decreaseCloudsPressed = true;
+        std::cout << "Cloud coverage: " << cloudSystem->cloudCoverage << std::endl;
+    }
+    if (glfwGetKey(window, GLFW_KEY_V) == GLFW_RELEASE) {
+        decreaseCloudsPressed = false;
+    }
+
+    // Cycle through weather states with W key
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS && !cycleWeatherPressed) {
+        weatherController->CycleWeatherState();
+        cycleWeatherPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_RELEASE) {
+        cycleWeatherPressed = false;
+    }
+
+    // Direct weather state selection with number keys
+    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) {
+        weatherController->SetWeatherState(CLEAR);
+    }
+    else if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) {
+        weatherController->SetWeatherState(PARTLY_CLOUDY);
+    }
+    else if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) {
+        weatherController->SetWeatherState(CLOUDY);
+    }
+    else if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) {
+        weatherController->SetWeatherState(LIGHT_RAIN);
+    }
+    else if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) {
+        weatherController->SetWeatherState(HEAVY_RAIN);
+    }
+
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

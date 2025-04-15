@@ -141,9 +141,12 @@
   <ItemGroup>
     <ClCompile Include="glad.c" />
     <ClCompile Include="scenes\Main.cpp" />
+    <ClCompile Include="scripts\cloudSystem.cpp" />
     <ClCompile Include="scripts\Model_load.cpp" />
+    <ClCompile Include="scripts\rainSystem.cpp" />
     <ClCompile Include="scripts\Shader.cpp" />
     <ClCompile Include="scripts\stb.cpp" />
+    <ClCompile Include="scripts\weatherController.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="scripts\camera.h" />
