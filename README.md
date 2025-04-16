@@ -1,4 +1,4 @@
-Can cycle through weather states.
+Can cycle through weather states. Using numbers 1-5.
 1. Clear
 2. Partly cloudy
 3. Cloudy
