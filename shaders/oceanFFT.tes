@@ -2,7 +2,7 @@
 layout(quads, equal_spacing, ccw) in;
 
 in vec3 tcPosition[];
-
+uniform int _TextureZ;
 
 out vec2 uv;
 out vec3 pos;
@@ -46,14 +46,14 @@ vec4 view_Pos = view * worldPos;
     depth = 1-Linear01Depth(view_Pos.z,1500);
     vec3 displacement = vec3(0.0);
    
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < _TextureZ; ++i) {
         displacement += textureLod(_DisplacementTextures, vec3(uv, i), 0).rgb;
     }
     displacement *= _DisplacementDepthAttenuation;
 
     
 
-    pos = mix(worldPos.xyz, worldPos.xyz + displacement, pow(depth,1));
+    pos = mix(worldPos.xyz, worldPos.xyz + displacement, pow(depth,_DisplacementDepthAttenuation));
     gl_Position = projection * view * vec4(pos, 1.0);
 }
 

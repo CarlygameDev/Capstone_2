@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <iostream>
 #include <vector>
 #include <random>
@@ -48,22 +48,39 @@ public:
     float peakEnhancement;
     float shortWavesFade;
 };
+struct Layer {
+public:
+    int DomainSize;
+    DisplaySpectrumSettings spec1;
+    DisplaySpectrumSettings spec2;
+};
+struct perChangeParameters {
+    int TextureSize;
+    int TextureCount;
+    int seed;
+    float lowCutOff;
+    float highCutOff;
+    float Gravity;
+    float Depth;
+    vector<Layer> layers;
+};
 class OceanFFTGenerator
 {
 public:
-    OceanFFTGenerator(int textureSize);
+    OceanFFTGenerator(vector<Layer>&layers);
     ~OceanFFTGenerator();
     void GenerateSpectrums(int count);
 
  
 
- float gravity = 9.81;  // Gravity constant
+    int const TextureCount();
  void spectrumBindBuffer(int location);
  void CalculateSpectrum(ComputeShader Spectrum, ComputeShader conjugate);
- void EvolveSpectrum();
+ void EvolveSpectrum(ComputeShader shader);
  void IFFT(ComputeShader horizontal, ComputeShader vertical);
  void AssembleTextures(ComputeShader shader);
  void bindTextures();
+ void InitialBake(perChangeParameters parameters);
  int const DisplacementTexture();
  int const SlopeTexture();
  void setDomain(ShaderBase shader);
@@ -85,7 +102,8 @@ private:
    float JonswapAlpha(float fetch, float windSpeed);
    float JonswapPeakFrequency(float fetch, float windSpeed);
    void FillSpectrumStruct(DisplaySpectrumSettings displaySettings, SpectrumSettings& computeSettings);
-   GLuint N;//texture Size
+   void FreeTextures();
+   GLuint N;
    GLuint spectrumBuffer;
    GLuint initial_spectrumTextures;
    GLuint spectrumTextures;
@@ -96,22 +114,29 @@ private:
 
    vector<int>DomainSizes;  
    std::vector<SpectrumSettings> spectrums;
-   void debug();
+   void defaultSpectrum(vector<Layer>& layers);
 
    GLuint planeModel;
    GLuint indices;
   
+   //parameters
+   float gravity = 9.81;  // Gravity constant
+   float lowCutOff=0.001;
+   float highCutOff=9000;
+   float Depth=20;
+   int seed=1;
 };
 
-OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
+OceanFFTGenerator::OceanFFTGenerator(vector<Layer>& layers) {
     //          Spectrum Buffer
     ///////////////////////////////////
     glGenBuffers(1, &spectrumBuffer);
-   
+
+    int textureSize = 512;
     
     //Textures 
  ///////////////////////////////////////
-    //note does it need the F?
+   
     initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, 4, GL_RGBA16F, true);  // ARGBHalf in Unity
     spectrumTextures = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA16F, true);     
      pingPongTextures   = CreateTextureArray(textureSize, textureSize, 8, GL_RGBA16F, true);            
@@ -140,17 +165,86 @@ OceanFFTGenerator::OceanFFTGenerator(int textureSize) {
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     N = textureSize;
-    debug();
+    defaultSpectrum(layers);
+    glDeleteProgram(precomputeDiddy.ID);
     return;
 
-    for (int i = 0; i < 4;i++) {
-   // DomainSizes.push_back((int)RandomFloat(100, 500));
-        DomainSizes.push_back(94);
-    }
+ 
    
+}
+void OceanFFTGenerator::InitialBake(perChangeParameters parameters) {
+
+    FreeTextures();  // 🔥 Prevent memory leaks
+    //Textures 
+///////////////////////////////////////
+    int textureSize = parameters.TextureSize;
+    int amount = parameters.TextureCount;
+    initial_spectrumTextures = CreateTextureArray(textureSize, textureSize, amount, GL_RGBA16F, true);  // ARGBHalf in Unity
+    spectrumTextures = CreateTextureArray(textureSize, textureSize, amount*2, GL_RGBA16F, true);
+    pingPongTextures = CreateTextureArray(textureSize, textureSize, amount*2, GL_RGBA16F, true);
+    displacementTextures = CreateTextureArray(textureSize, textureSize, amount, GL_RGBA16F, true);     // ARGBHalf
+    slopeTextures = CreateTextureArray(textureSize, textureSize, amount, GL_RG16F, true);              // RGHalf
+
+    cout << textureSize<<endl;
+
+    int logSize = static_cast<int>(log2(textureSize));  
+
+    glGenTextures(1, &twiddleTexture);
+    glBindTexture(GL_TEXTURE_2D, twiddleTexture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, logSize, textureSize); // log2(FFTSize) FFT stages, FFTSize entries
+
+    // Set texture parameters (use NEAREST filtering to avoid interpolation)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // Bind it to the compute shader
+    glBindImageTexture(0, twiddleTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+    ComputeShader precomputeDiddy("precomputeDiddyFactor.cps");
+    precomputeDiddy.use();
+    precomputeDiddy.setInt("Size", textureSize);
+    glDispatchCompute(logSize, textureSize / 2 / 8, 1);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+    N = textureSize;
+    DomainSizes.clear();
+    spectrums.resize(amount*2);
+    
+    for (int i = 0;i < amount;++i) {
+        DomainSizes.push_back(parameters.layers[i].DomainSize);
+       FillSpectrumStruct(parameters.layers[i].spec1, spectrums[i * 2]);
+        FillSpectrumStruct(parameters.layers[i].spec2, spectrums[i * 2 + 1]);
+    }
+
+    Depth = parameters.Depth;
+    gravity = parameters.Gravity;
+    highCutOff = parameters.highCutOff;
+    lowCutOff = parameters.lowCutOff;
+    seed = parameters.seed;
+    glDeleteProgram(precomputeDiddy.ID);
 }
 OceanFFTGenerator::~OceanFFTGenerator() {}
 
+void OceanFFTGenerator::FreeTextures() {
+
+    
+
+   if (initial_spectrumTextures!=0) glDeleteTextures(1, &initial_spectrumTextures);
+    if (spectrumTextures!=0) glDeleteTextures(1, &spectrumTextures);
+    if (pingPongTextures!=0) glDeleteTextures(1, &pingPongTextures);
+  if (displacementTextures!=0) glDeleteTextures(1, &displacementTextures);
+    if (slopeTextures!=0) glDeleteTextures(1, &slopeTextures);
+    if (twiddleTexture!=0) glDeleteTextures(1, &twiddleTexture);
+
+    initial_spectrumTextures = 0;
+    spectrumTextures = 0;
+    pingPongTextures = 0;
+    displacementTextures = 0;
+    slopeTextures = 0;
+    twiddleTexture = 0;
+}
 
 void OceanFFTGenerator::GenerateSpectrums(int count)
 {
@@ -175,7 +269,9 @@ void OceanFFTGenerator::GenerateSpectrums(int count)
         spectrums.push_back(spectrum);
     }
 }
-
+int const OceanFFTGenerator::TextureCount() {
+    return DomainSizes.size();
+}
 float OceanFFTGenerator::RandomFloat(float min, float max)
 {
     static std::random_device rd;
@@ -217,19 +313,28 @@ void OceanFFTGenerator::CalculateSpectrum(ComputeShader Spectrum, ComputeShader 
  
     Spectrum.use();  
  spectrumBindBuffer(1);
-   
+ Spectrum.setFloat("_Gravity", gravity);
+ Spectrum.setInt("_Seed", seed);
+ Spectrum.setFloat("_Depth", Depth);
+ Spectrum.setFloat("_LowCutoff", lowCutOff);
+ Spectrum.setFloat("_HighCutoff", highCutOff);
+ Spectrum.setInt("n", N);
     setDomain(Spectrum);
     glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-    glDispatchCompute(N / 16,  N/ 16, 1);
+    glDispatchCompute(N / 16,  N/ 16, DomainSizes.size());
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     conjugate.use();
+    conjugate.setInt("n", N);
    
   
-    glDispatchCompute(N / 16, N / 16, 1);
+    glDispatchCompute(N / 16, N / 16, DomainSizes.size());
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+   
 }
-void OceanFFTGenerator::EvolveSpectrum() {
-
+void OceanFFTGenerator::EvolveSpectrum(ComputeShader shader) {
+    shader.setInt("n",N);
+    shader.setFloat("G", gravity);
+    setDomain(shader);
     glBindImageTexture(0, initial_spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
     glBindImageTexture(1, spectrumTextures, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
     glDispatchCompute(N / 16, N / 16, DomainSizes.size());
@@ -330,7 +435,7 @@ void OceanFFTGenerator::RenderOcean() {
        glDrawElements(GL_PATCHES, indices, GL_UNSIGNED_INT, 0);
 }
 
-void OceanFFTGenerator::debug() {
+void OceanFFTGenerator::defaultSpectrum(vector<Layer>& layers) {
     DisplaySpectrumSettings settings[8];
 
     // Spectrum 1
@@ -420,7 +525,14 @@ void OceanFFTGenerator::debug() {
         FillSpectrumStruct(settings[i], computeSettings);
         spectrums.push_back(computeSettings);
     }
+   
     DomainSizes = { 94,128,64,32 };
+    layers.resize(4); 
+ for (int index = 0; index < 4; ++index) {
+        layers[index].DomainSize = DomainSizes[index];
+        layers[index].spec1 = settings[index * 2];
+        layers[index].spec2 = settings[index * 2 + 1];
+    }
 }
 
 

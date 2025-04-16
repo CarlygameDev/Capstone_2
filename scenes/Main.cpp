@@ -25,7 +25,7 @@ void load_VAO_VBO(unsigned int* vao, unsigned int* vbo, const float* vertices, c
 unsigned int loadCubemap(vector<std::string> faces);
 void load_Skybox(unsigned int* vao, unsigned int* vbo, unsigned int* cube_tex, vector<std::string> names);
 float getShaderUniformFloat(const Shader& shader, const std::string& uniformName, float defaultValue);
-
+void ShowTextureSettingsWindow(OceanFFTGenerator& oceanSettings, ComputeShader& spectrum, ComputeShader& conjugate);
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
@@ -46,46 +46,136 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 unsigned int planeVAO;
 
-// Define the ocean parameters struct at global scope
-struct OceanParams {
-    float bubbleDensity = 1.0f;
-    float roughness = 0.075f;
-    float foamRoughnessModifier = 0.0f;
-    float heightModifier = 1.0f;
-    float wavePeakScatterStrength = 1.0f;
-    float scatterStrength = 1.0f;
-    float scatterShadowStrength = 0.5f;
-    float environmentLightStrength = 0.5f;
-    glm::vec3 sunIrradiance = glm::vec3(1.0f, 0.64f, 0.32f);
-    glm::vec3 bubbleColor = glm::vec3(0.0f, 0.02f, 0.016f);
-    glm::vec3 scatterColor = glm::vec3(0.016f, 0.07359998f, 0.16f);
-
-};
-
-struct FoamSettings {
-    glm::vec3 foam = glm::vec3(1.0f, 1.0f, 1.0f);
-    float foamBias = 0.855f;
-    float foamThreshold = 0.0f;
-    float foamAdd = 0.01f;
-    float foamDecayRate = 0.0175f;
-    float foamDepthFalloff = 1.0f;
-} foamSettings;
 
 
 
-// Declare the instance at global scope
-OceanParams oceanParams;
 
-// Helper function to get uniform float values from shader
-float getShaderUniformFloat(const Shader& shader, const std::string& uniformName, float defaultValue) {
-    GLint location = glGetUniformLocation(shader.ID, uniformName.c_str());
-    if (location == -1) {
-        return defaultValue; // Uniform not found
+
+std::vector<Layer> layers;
+
+
+
+void DrawPerFrameSettings(
+    ComputeShader& time_evolution,
+    ComputeShader& normalizeFFT)
+{
+    ImGui::SetNextWindowSize(ImVec2(350, 300), ImGuiCond_Once);
+    if (!ImGui::Begin("Per Frame Parameters")) {
+        ImGui::End();
+        return;
     }
 
-    float value;
-    glGetUniformfv(shader.ID, location, &value);
-    return value;
+    // === Speed of the Simulation ===
+    if (ImGui::CollapsingHeader("Speed of the Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static int speed = 1;
+        static float repeatTime = 200.0f;
+
+        if (ImGui::SliderInt("Speed", &speed, 0, 10)) {
+            time_evolution.use();
+            time_evolution.setInt("speed", speed);
+        }
+
+        if (ImGui::SliderFloat("Repeat Time", &repeatTime, 1.0f, 200.0f, "%.1f")) {
+            time_evolution.use();
+            time_evolution.setFloat("RepeatTime", repeatTime);
+        }
+    }
+
+    // === Foam Simulation Parameters ===
+    if (ImGui::CollapsingHeader("Foam Simulation Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static glm::vec2 lambda = glm::vec2(1.0f, 1.0f);
+        static float foamDecayRate = 0.0175f;
+        static float foamBias = 0.85f;
+        static float foamThreshold = 0.0f;
+        static float foamAdd = 0.01f;
+
+        if (ImGui::SliderFloat2("Lambda", glm::value_ptr(lambda), 0.0f, 5.0f, "%.2f")) {
+            normalizeFFT.use();
+            normalizeFFT.setVec2("_Lambda", lambda);
+        }
+
+        if (ImGui::SliderFloat("Foam Decay Rate", &foamDecayRate, 0.0f, 1.0f, "%.4f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamDecayRate", foamDecayRate);
+        }
+
+        if (ImGui::SliderFloat("Foam Bias", &foamBias, -1.0f, 1.0f, "%.2f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamBias", foamBias);
+        }
+
+        if (ImGui::SliderFloat("Foam Threshold", &foamThreshold, 0.0f, 1.0f, "%.2f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamThreshold", foamThreshold);
+        }
+
+        if (ImGui::SliderFloat("Foam Add", &foamAdd, 0.0f, 0.1f, "%.3f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamAdd", foamAdd);
+        }
+    }
+
+    ImGui::End();
+}
+void DrawOceanSurfaceSettings(Shader& oceanShader)
+{
+    ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_Once);
+    if (!ImGui::Begin("Ocean Surface Appearance")) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::CollapsingHeader("Surface Appearance Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static glm::vec3 sunIrradiance = glm::vec3(1.0f, 0.694f, 0.32f);
+        static glm::vec3 scatterColor = glm::vec3(0.016f, 0.0736f, 0.16f);
+        static glm::vec3 bubbleColor = glm::vec3(0.0f, 0.02f, 0.016f);
+        static glm::vec3 foamColor = glm::vec3(0.9f, 0.9f, 1.0f);
+
+        static float normalStrength = 1.0f;
+        static float roughness = 0.075f;
+        static float foamRoughnessModifier = 0.0f;
+        static float environmentLightStrength = 0.5f;
+        static float heightModifier = 1.0f;
+        static float bubbleDensity = 1.0f;
+        static float wavePeakScatterStrength = 1.0f;
+        static float scatterStrength = 1.0f;
+        static float scatterShadowStrength = 0.5f;
+        static float displacementDepthAttenuation = 1.0f;
+        static float underwaterFadeStrength = 2.0f;
+
+        auto setColor = [&](const char* label, glm::vec3& value, const char* uniform) {
+            if (ImGui::ColorEdit3(label, glm::value_ptr(value))) {
+                oceanShader.use();
+                oceanShader.setVec3(uniform, value);
+            }
+            };
+
+        auto setSlider = [&](const char* label, float& value, float min, float max, const char* uniform) {
+            if (ImGui::SliderFloat(label, &value, min, max, "%.3f")) {
+                oceanShader.use();
+                oceanShader.setFloat(uniform, value);
+            }
+            };
+
+        setColor("Sun Irradiance", sunIrradiance, "_SunIrradiance");
+        setColor("Scatter Color", scatterColor, "_ScatterColor");
+        setColor("Bubble Color", bubbleColor, "_BubbleColor");
+        setColor("Foam Color", foamColor, "_FoamColor");
+
+        setSlider("Normal Strength", normalStrength, 0.0f, 2.0f, "_NormalStrength");
+        setSlider("Roughness", roughness, 0.0f, 1.0f, "_Roughness");
+        setSlider("Foam Roughness Modifier", foamRoughnessModifier, 0.0f, 1.0f, "_FoamRoughnessModifier");
+        setSlider("Environment Light Strength", environmentLightStrength, 0.0f, 2.0f, "_EnvironmentLightStrength");
+        setSlider("Height Modifier", heightModifier, 0.0f, 10.0f, "_HeightModifier");
+        setSlider("Bubble Density", bubbleDensity, 0.0f, 1.0f, "_BubbleDensity");
+        setSlider("Wave Peak Scatter Strength", wavePeakScatterStrength, 0.0f, 10.0f, "_WavePeakScatterStrength");
+        setSlider("Scatter Strength", scatterStrength, 0.0f, 10.0f, "_ScatterStrength");
+        setSlider("Scatter Shadow Strength", scatterShadowStrength, 0.0f, 1.0f, "_ScatterShadowStrength");
+        setSlider("Displacement Depth Attenuation", displacementDepthAttenuation, 0.0f, 5.0f, "_DisplacementDepthAttenuation");
+        setSlider("Underwater Fade Strength", underwaterFadeStrength, 0.0f, 5.0f, "_UnderwaterFadeStrength");
+    }
+
+    ImGui::End();
 }
 
 int main()
@@ -151,16 +241,16 @@ int main()
     skyboxShader.use();
     skyboxShader.setVec3("sunDirection", sunDirection);
     skyboxShader.setVec3("sunColor", sunColor);
-
+    OceanFFTGenerator oceanSettings(layers);
     ComputeShader spectrum("Spectrum_INIT.cps");
     ComputeShader conjugate("SpectrumConjugate.cps");
-    OceanFFTGenerator oceanSettings(1024);
+    
     oceanSettings.CalculateSpectrum(spectrum, conjugate);
     oceanSettings.createFFTWaterPlane(100);
 
     ComputeShader timeEvolutionShader("time_evolution.cps");
     timeEvolutionShader.use();
-    oceanSettings.setDomain(timeEvolutionShader);
+
 
     ComputeShader horizontalFFT("horizontalFFT.cps");
     ComputeShader verticalFFT("verticalFFT.cps");
@@ -179,7 +269,6 @@ int main()
     ComputeShader normalizeFFT("fftNormalize.cps");
     normalizeFFT.use();
 
-    Shader screenShader("PP.vert", "PP.frag");
 
 
     Shader screenShader("PP.vert","PP.frag");
@@ -199,25 +288,24 @@ int main()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
-    unsigned int rbo;
-    glGenRenderbuffers(1, &rbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    unsigned int depthTexture;
+    glGenTextures(1, &depthTexture);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, SCR_WIDTH, SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // Initialize ocean parameters from shader defaults
     oceanShader.use();
-    oceanParams.bubbleDensity = getShaderUniformFloat(oceanShader, "_BubbleDensity", 1.0f);
-    oceanParams.roughness = getShaderUniformFloat(oceanShader, "_Roughness", 0.075f);
-    oceanParams.foamRoughnessModifier = getShaderUniformFloat(oceanShader, "_FoamRoughnessModifier", 0.0f);
-    oceanParams.heightModifier = getShaderUniformFloat(oceanShader, "_HeightModifier", 1.0f);
-    oceanParams.wavePeakScatterStrength = getShaderUniformFloat(oceanShader, "_WavePeakScatterStrength", 1.0f);
-    oceanParams.scatterStrength = getShaderUniformFloat(oceanShader, "_ScatterStrength", 1.0f);
-    oceanParams.scatterShadowStrength = getShaderUniformFloat(oceanShader, "_ScatterShadowStrength", 0.5f);
-    oceanParams.environmentLightStrength = getShaderUniformFloat(oceanShader, "_EnvironmentLightStrength", 0.5f);
+    
 
     int fCounter = 0;
     while (!glfwWindowShouldClose(window))
@@ -236,7 +324,7 @@ int main()
         // === Ocean Spectrum Update ===
         timeEvolutionShader.use();
         timeEvolutionShader.setFloat("time", currentFrame);
-        oceanSettings.EvolveSpectrum();
+        oceanSettings.EvolveSpectrum(timeEvolutionShader);
         oceanSettings.IFFT(horizontalFFT, verticalFFT);
         oceanSettings.AssembleTextures(normalizeFFT);
 
@@ -265,32 +353,12 @@ int main()
         oceanShader.setMat4("view", view);
         oceanShader.setMat4("projection", projection);
         oceanShader.setVec3("cameraPos", camera.Position);
+        oceanShader.setInt("_TextureZ",oceanSettings.TextureCount());
+
+       
 
 
-        // Pass the ocean parameters to the shader
-        oceanShader.setFloat("_BubbleDensity", oceanParams.bubbleDensity);
-        oceanShader.setFloat("_Roughness", oceanParams.roughness);
-        oceanShader.setFloat("_FoamRoughnessModifier", oceanParams.foamRoughnessModifier);
-        oceanShader.setFloat("_HeightModifier", oceanParams.heightModifier);
-        oceanShader.setFloat("_WavePeakScatterStrength", oceanParams.wavePeakScatterStrength);
-        oceanShader.setFloat("_ScatterStrength", oceanParams.scatterStrength);
-        oceanShader.setFloat("_ScatterShadowStrength", oceanParams.scatterShadowStrength);
-        oceanShader.setFloat("_EnvironmentLightStrength", oceanParams.environmentLightStrength);
-        oceanShader.setVec3("_SunIrradiance", oceanParams.sunIrradiance);
-        oceanShader.setVec3("_BubbleColor", oceanParams.bubbleColor);
-        oceanShader.setVec3("_ScatterColor", oceanParams.scatterColor);
-
-        // Pass foam settings to the shader
-        oceanShader.setVec3("_FoamColor", foamSettings.foam);
-        oceanShader.setFloat("_FoamBias", foamSettings.foamBias);
-        oceanShader.setFloat("_FoamThreshold", foamSettings.foamThreshold);
-        oceanShader.setFloat("_FoamAdd", foamSettings.foamAdd);
-        oceanShader.setFloat("_FoamDecayRate", foamSettings.foamDecayRate);
-        oceanShader.setFloat("_FoamDepthFalloff", foamSettings.foamDepthFalloff);
-
-
-        oceanSettings.bindTextures();
-        oceanSettings.RenderOcean();
+   
 
         // Skybox
         glDepthFunc(GL_LEQUAL);
@@ -318,6 +386,8 @@ int main()
         oceanShader.setVec3("cameraPos", camera.Position);
         oceanShader.setFloat("_Time",currentFrame);
         oceanSettings.bindTextures();
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
         oceanSettings.RenderOcean();
@@ -331,13 +401,19 @@ int main()
         glDisable(GL_DEPTH_TEST);
         glClear(GL_COLOR_BUFFER_BIT);
         screenShader.use();
-        glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+        screenShader.setVec3("cameraPos", camera.Position);
+        screenShader.setInt("_TextureZ", oceanSettings.TextureCount());
 
+        screenShader.setMat4("invViewProj", glm::inverse(projection * view));
+        
+
+        glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+    
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, depthTexture);
-        glActiveTexture(GL_TEXTURE2);
-
-
+      glBindTexture(GL_TEXTURE_2D, depthTexture);
+      glActiveTexture(GL_TEXTURE2);
+      glBindTexture(GL_TEXTURE_2D, oceanSettings.DisplacementTexture());
         renderQuad();
 
         // === IMGUI UI ===
@@ -346,168 +422,10 @@ int main()
         ImGui::NewFrame();
 
         if (cursorEnabled) {
-            ImGui::SetNextWindowSize(ImVec2(450, 400), ImGuiCond_Once);
-            if (ImGui::Begin("Ocean Simulation Controls")) {
-                if (ImGui::CollapsingHeader("PBR Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-                    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 100.0f);
-                    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 20.0f);
-
-                    ImGui::Columns(2, nullptr, false);
-
-                    ImGui::Text("Sun Irradiance");
-                    ImGui::NextColumn();
-                    if (ImGui::ColorEdit3("##SunIrradiance", glm::value_ptr(oceanParams.sunIrradiance))) {
-                        oceanShader.use();
-                        oceanShader.setVec3("_SunIrradiance", oceanParams.sunIrradiance);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Bubble Color");
-                    ImGui::NextColumn();
-                    if (ImGui::ColorEdit3("##BubbleColor", glm::value_ptr(oceanParams.bubbleColor))) {
-                        oceanShader.use();
-                        oceanShader.setVec3("_BubbleColor", oceanParams.bubbleColor);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Scatter Color");
-                    ImGui::NextColumn();
-                    if (ImGui::ColorEdit3("##ScatterColor", glm::value_ptr(oceanParams.scatterColor))) {
-                        oceanShader.use();
-                        oceanShader.setVec3("_ScatterColor", oceanParams.scatterColor);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Bubble Density");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##BubbleDensity", &oceanParams.bubbleDensity, 0.0f, 1.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_BubbleDensity", oceanParams.bubbleDensity);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Roughness");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##Roughness", &oceanParams.roughness, 0.0f, 1.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_Roughness", oceanParams.roughness);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Foam Roughness Mod");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##FoamRoughness", &oceanParams.foamRoughnessModifier, 0.0f, 1.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_FoamRoughnessModifier", oceanParams.foamRoughnessModifier);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Height Modifier");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##HeightModifier", &oceanParams.heightModifier, 0.0f, 10.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_HeightModifier", oceanParams.heightModifier);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Wave Scatter Strength");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##WaveScatter", &oceanParams.wavePeakScatterStrength, 0.0f, 10.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_WavePeakScatterStrength", oceanParams.wavePeakScatterStrength);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Scatter Strength");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##ScatterStrength", &oceanParams.scatterStrength, 0.0f, 10.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_ScatterStrength", oceanParams.scatterStrength);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Scatter Shadow Strength");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##ScatterShadowStrength", &oceanParams.scatterShadowStrength, 0.0f, 1.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_ScatterShadowStrength", oceanParams.scatterShadowStrength);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Text("Environment Light Strength");
-                    ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##EnvLightStrength", &oceanParams.environmentLightStrength, 0.0f, 1.0f, "%.2f")) {
-                        oceanShader.use();
-                        oceanShader.setFloat("_EnvironmentLightStrength", oceanParams.environmentLightStrength);
-                    }
-                    ImGui::Columns(1);
-                    ImGui::PopStyleVar(2);
-                }
-                // === Foam Settings ===
-                if (ImGui::CollapsingHeader("Foam Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-                    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 100.0f);
-                    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 20.0f);
-
-                    ImGui::Columns(2, nullptr, false); // Two-column layout
-
-                    // Foam Color
-                    ImGui::Text("Foam Color"); ImGui::NextColumn();
-                    if (ImGui::ColorEdit3("##FoamColor", glm::value_ptr(foamSettings.foam))) {
-                        oceanShader.use();
-                        oceanShader.setVec3("_FoamColor", foamSettings.foam);
-                    }
-                    ImGui::NextColumn();
-
-                    // Foam Bias
-                    ImGui::Text("Foam Bias"); ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##FoamBias", &foamSettings.foamBias, -1.0f, 1.0f, "%.2f")) {
-                        normalizeFFT.use();
-                        normalizeFFT.setFloat("_FoamBias", foamSettings.foamBias);
-                    }
-                    ImGui::NextColumn();
-
-                    // Foam Threshold
-                    ImGui::Text("Foam Threshold"); ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##FoamThreshold", &foamSettings.foamThreshold, 0.0f, 1.0f, "%.2f")) {
-                        normalizeFFT.use();
-                        normalizeFFT.setFloat("_FoamThreshold", foamSettings.foamThreshold);
-                    }
-                    ImGui::NextColumn();
-
-                    // Foam Add
-                    ImGui::Text("Foam Add"); ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##FoamAdd", &foamSettings.foamAdd, 0.0f, 0.5f, "%.2f")) {
-                        normalizeFFT.use();
-                        normalizeFFT.setFloat("_FoamAdd", foamSettings.foamAdd);
-                    }
-                    ImGui::NextColumn();
-
-                    // Foam Decay Rate
-                    ImGui::Text("Foam Decay Rate"); ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##FoamDecayRate", &foamSettings.foamDecayRate, 0.0f, 1.0f, "%.2f")) {
-                        normalizeFFT.use();
-                        normalizeFFT.setFloat("_FoamDecayRate", foamSettings.foamDecayRate);
-                    }
-                    ImGui::NextColumn();
-
-                    // Foam Depth Falloff
-                    ImGui::Text("Foam Depth Falloff"); ImGui::NextColumn();
-                    if (ImGui::SliderFloat("##FoamDepthFalloff", &foamSettings.foamDepthFalloff, 0.0f, 10.0f, "%.2f")) {
-                        normalizeFFT.use();
-                        normalizeFFT.setFloat("_FoamDepthFalloff", foamSettings.foamDepthFalloff);
-                    }
-                    ImGui::NextColumn();
-
-                    ImGui::Columns(1); // Reset to single-column
-                    ImGui::PopStyleVar(2);
-                }
-
-
-
-                ImGui::End();
-            }
+            DrawPerFrameSettings(timeEvolutionShader,normalizeFFT);
+            DrawOceanSurfaceSettings(oceanShader);
         }
-
+        ShowTextureSettingsWindow(oceanSettings,spectrum,conjugate);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -524,6 +442,108 @@ int main()
     return 0;
 }
   
+
+
+void ShowSpectrumSettings(DisplaySpectrumSettings& settings, const char* labelPrefix,const char* name)
+{
+    ImGui::Text(name);
+    ImGui::NextColumn();
+
+    ImGui::SliderFloat((std::string("Scale##") + labelPrefix).c_str(), &settings.scale, 0.0f, 5.0f);
+    ImGui::SliderFloat((std::string("Wind Speed##") + labelPrefix).c_str(), &settings.windSpeed, 0.0f, 100.0f);
+    ImGui::SliderFloat((std::string("Wind Direction##") + labelPrefix).c_str(), &settings.windDirection, 0.0f, 360.0f);
+    ImGui::SliderFloat((std::string("Fetch##") + labelPrefix).c_str(), &settings.fetch, 0.0f, 10000.0f);
+    ImGui::SliderFloat((std::string("Spread Blend##") + labelPrefix).c_str(), &settings.spreadBlend, 0.0f, 1.0f);
+    ImGui::SliderFloat((std::string("Swell##") + labelPrefix).c_str(), &settings.swell, 0.0f, 1.0f);
+    ImGui::SliderFloat((std::string("Peak Enhancement##") + labelPrefix).c_str(), &settings.peakEnhancement, 0.0f, 10.0f);
+    ImGui::SliderFloat((std::string("Short Waves Fade##") + labelPrefix).c_str(), &settings.shortWavesFade, 0.0f, 1.0f);
+}
+
+
+
+void ShowTextureSettingsWindow(OceanFFTGenerator& oceanSettings, ComputeShader& spectrum,ComputeShader& conjugate)
+{
+    static int sliderValue = 4;
+    static int selectedTextureIdx = 2;
+
+    static int seed = 1;
+    static float lowCutoff = 0.01f;
+    static float highCutoff = 9000.0f;
+    static float depth = 20.0f;
+    static float gravity = 9.8f;
+
+    static const char* textureSizes[] = {
+        "2048", "1024", "512", "256", "128", "64", "32", "16"
+    };
+    static const int numTextureSizes = sizeof(textureSizes) / sizeof(textureSizes[0]);
+
+    ImGui::Begin("Spectrum Settings");
+
+    // Slider for texture count
+    if (ImGui::SliderInt("Texture Count", &sliderValue, 1, 4)) {
+        if (layers.size() < sliderValue)
+            layers.resize(sliderValue);
+        else if (layers.size() > sliderValue)
+            layers.resize(sliderValue);
+    }
+
+    // Texture size selection
+    if (ImGui::BeginCombo("Texture Size", textureSizes[selectedTextureIdx])) {
+        for (int i = 0; i < numTextureSizes; i++) {
+            bool isSelected = (selectedTextureIdx == i);
+            if (ImGui::Selectable(textureSizes[i], isSelected))
+                selectedTextureIdx = i;
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    // New parameters
+    ImGui::SliderInt("Seed", &seed, 0, 1000000);
+    ImGui::SliderFloat("Low Cutoff", &lowCutoff, 0.0001f, 9000.0f, "%.4f");
+    ImGui::SliderFloat("High Cutoff", &highCutoff, 0.0001f, 9000.0f, "%.4f");
+    ImGui::SliderFloat("Depth", &depth, 2.0f, 20.0f);
+    ImGui::SliderFloat("Gravity", &gravity, 0.0f, 20.0f);
+
+    // Show UI for each layer
+    for (int i = 0; i < sliderValue; ++i) {
+        std::string layerLabel = "Layer " + std::to_string(i + 1);
+        if (ImGui::CollapsingHeader(layerLabel.c_str())) {
+            ImGui::InputInt(("Domain Size##" + std::to_string(i)).c_str(), &layers[i].DomainSize);
+            ShowSpectrumSettings(layers[i].spec1, ("Layer" + std::to_string(i) + "_Spec1").c_str(), "Spectrum 1");
+            ShowSpectrumSettings(layers[i].spec2, ("Layer" + std::to_string(i) + "_Spec2").c_str(), "Spectrum 2");
+        }
+    }
+
+    // Padding from edge
+    float padding = 10.0f;
+    float buttonWidth = 80.0f;
+
+    // Position to bottom right
+    float windowWidth = ImGui::GetWindowContentRegionMax().x;
+    ImGui::SetCursorPosX(windowWidth - buttonWidth - padding);
+    
+    if (ImGui::Button("Bake", ImVec2(buttonWidth, 0))) {
+        perChangeParameters parameters;
+        parameters.TextureSize = std::stoi(textureSizes[selectedTextureIdx]);
+        parameters.TextureCount = sliderValue;
+        parameters.seed = seed;
+        parameters.lowCutOff = lowCutoff;
+        parameters.highCutOff = highCutoff;
+        parameters.Depth = depth;
+        parameters.Gravity = gravity;
+        parameters.layers = layers; 
+
+       oceanSettings. InitialBake(parameters);
+       oceanSettings.CalculateSpectrum(spectrum, conjugate);
+    }
+    ImGui::End();
+}
+
+
+
+
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------

@@ -3,22 +3,24 @@ layout(local_size_x = 16, local_size_y = 16) in;
 layout(rgba16f, binding = 0) uniform image2DArray input;   
 layout(rgba16f, binding = 1) uniform image2DArray _output;  
 
-uniform int domains[4]; 
+uniform int domains[10]; 
 
 uniform float time;          // Elapsed time in seconds
 
 
 const float PI = 3.14159265359;
-const float G = 9.81;
-const float RepeatTime=200;
+uniform float G = 9.81;
+uniform int speed;
+uniform float RepeatTime=200;
 // Complex multiplication helper
 vec2 complex_mult(vec2 a, vec2 b) {
     return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
 }
-
+uniform int n;
 void main() {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 texSize = imageSize(input).xy;
+  //  ivec2 texSize = imageSize(input).xy;
+  ivec2 texSize = ivec2(n);
 uint i =gl_GlobalInvocationID.z;
     int N = texSize.x;
 

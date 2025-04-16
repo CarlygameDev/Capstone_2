@@ -7,6 +7,7 @@ out vec4 FragColor;
 
 #define PI 3.14159265358979323846
 
+uniform int _TextureZ;
 uniform vec3 _lightDir;   
 uniform vec3 cameraPos;
 
@@ -52,19 +53,15 @@ void main() {
     vec3 viewDir = normalize(cameraPos - pos);
     vec3 halfwayDir = normalize(lightDir + viewDir);
 
-    // Sample foam and displacement from the texture array.
-    vec4 displacementFoam1 = textureLod(_DisplacementTextures, vec3(uv, 0), 0.0);
-    vec4 displacementFoam2 = textureLod(_DisplacementTextures, vec3(uv, 1), 0.0);
-    vec4 displacementFoam3 = textureLod(_DisplacementTextures, vec3(uv, 2), 0.0);
-    vec4 displacementFoam4 = textureLod(_DisplacementTextures, vec3(uv, 3), 0.0);
-    vec4 displacementFoam = displacementFoam1 + displacementFoam2 + displacementFoam3 + displacementFoam4;
-
-    // Sample slope textures using LOD 0 for all slices.
-    vec2 slopes1 = textureLod(_SlopeTextures, vec3(uv, 0), 0.0).rg;
-    vec2 slopes2 = textureLod(_SlopeTextures, vec3(uv, 1), 0.0).rg;
-    vec2 slopes3 = textureLod(_SlopeTextures, vec3(uv, 2), 0.0).rg;
-    vec2 slopes4 = textureLod(_SlopeTextures, vec3(uv, 3), 0.0).rg;
-    vec2 slopes = slopes1 + slopes2 + slopes3 + slopes4;
+    vec4 displacementFoam;
+    for(int i=0;i<_TextureZ;++i){
+   displacementFoam += textureLod(_DisplacementTextures, vec3(uv, i), 0.0);
+    }
+    vec2 slopes ;
+     for(int i=0;i<_TextureZ;++i){
+    
+ slopes += textureLod(_SlopeTextures, vec3(uv, 0), 0.0).rg;
+    }
     slopes *= _NormalStrength;
 
     // Compute foam factor using depth attenuation.
@@ -118,22 +115,7 @@ void main() {
 
     colorOutput = mix(colorOutput, _FoamColor, clamp(foam, 0.0, 1.0));
 
-     float waterSurfaceHeight = pos.y;
-    
-    // Check if camera is below water surface at this fragment's position
-    bool isUnderwater = cameraPos.y < waterSurfaceHeight;
-    
-    // Optional: Add depth-based attenuation for underwater effects
-    float depthUnderwater = waterSurfaceHeight - cameraPos.y;
-    float depthAttenuation = clamp(depthUnderwater / _MaxWaterDepth, 0.0, 1.0);
-
-    // --- Underwater Effects ---
-    vec3 underwaterColor = colorOutput * _UnderwaterTint;
-    underwaterColor += _UnderwaterScatter * depthAttenuation; // Scattering effect
-    
-    // Apply underwater influence (lerp with attenuation or binary)
-    float underwaterFactor = float(isUnderwater) * (1.0 - exp(-depthUnderwater * _DepthSharpness));
-    colorOutput = mix(colorOutput, underwaterColor, underwaterFactor);
+   
 
 
 

@@ -22,6 +22,9 @@ public:
     void use() const {
         glUseProgram(ID);
     }
+    ~ShaderBase() {
+   //     if (ID) glDeleteProgram(ID);
+    }
 
     // utility uniform functions
    // ------------------------------------------------------------------------

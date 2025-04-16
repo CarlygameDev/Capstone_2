@@ -19,22 +19,16 @@ layout(rgba16f, binding = 0) uniform image2DArray Spectrums;
 layout(std430, binding = 1) buffer SpectrumsBuffer {
     SpectrumParameters _Spectrums[];
 };
-uniform int domains[4];  
+uniform int domains[10];  
 
 
 const float PI = 3.14159265359;
-const float _Gravity = 9.81;  // Gravity constant
-int _Seed=1;
+uniform float _Gravity = 9.81;  // Gravity constant
+uniform int _Seed=1;
+uniform float _Depth=20;
 
-
-//other parameters
-float _Depth=20;
-
-
-
-//Spectrum parameters
-const float _LowCutoff=0.0001f;
-const float _HighCutoff=9000.0f; 
+uniform float _LowCutoff=0.0001f;
+uniform float _HighCutoff=9000.0f; 
 
 
 float Dispersion(float kMag) {
@@ -129,18 +123,19 @@ float DirectionSpectrum(float theta, float omega, SpectrumParameters spectrum) {
 	float s = SpreadPower(omega, spectrum.peakOmega) + 16 * tanh(min(omega / spectrum.peakOmega, 20)) * spectrum.swell * spectrum.swell;
 	return mix(2.0f / 3.1415f * cos(theta) * cos(theta), Cosine2s(theta - spectrum.angle, s), spectrum.spreadBlend);
 }
-
+uniform int n;
 void main() {
     
-
-    ivec2 texSize = imageSize(Spectrums).xy;
+    uint i=gl_GlobalInvocationID.z;
+   // ivec2 texSize = imageSize(Spectrums).xy;
+   ivec2 texSize=ivec2(n);
     uint _N= texSize.x;
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
    
     uint seed = id.x + _N * id.y + _N;
     seed += _Seed;
  
- for (uint i = 0; i < 4; ++i) {
+
    float halfN = _N / 2.0f;
    float lengthScales=domains[i];
    float deltaK = 2.0f * PI / lengthScales;
@@ -173,6 +168,6 @@ vec2 gauss2 = UniformToGaussian(uniformRandSamples.z, uniformRandSamples.w);
             imageStore(Spectrums, ivec3(id,i), vec4(0.0));
         }
 
-        }
+        
           
 }

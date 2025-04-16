@@ -3,6 +3,7 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
+uniform int _TextureZ=0;
 uniform sampler2D screenTexture;
 uniform sampler2D depthTexture;
 uniform sampler2DArray DisplacementTextures; 
@@ -95,7 +96,7 @@ void main()
     // --- Underwater Check and Enhanced Effect ---
     // Sample the water displacement textures (assumed to store water-surface heights in red channel).
     float waterHeight = 0.0;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < _TextureZ ;++i) {
         waterHeight += texture(DisplacementTextures, vec3(TexCoords, float(i))).r;
     }
     waterHeight /= 4.0;  // Average the displacement heights
@@ -111,7 +112,8 @@ void main()
     
     // Apply gamma correction before output.
     finalColor = pow(finalColor, vec3(1.0 / 2.2));
-    FragColor = vec4(finalColor, 1.0);
+   FragColor = vec4(finalColor, 1.0);
+
 }
 
 
