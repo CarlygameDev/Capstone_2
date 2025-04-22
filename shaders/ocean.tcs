@@ -3,10 +3,10 @@
 layout(vertices = 3) out; // Tessellating triangles
 
 uniform vec3 cameraPos;
-uniform float maxTessLevel = 80.0;  // Maximum tessellation level (clamped for stability)
+uniform float maxTessLevel = 8.0;  // Maximum tessellation level (clamped for stability)
 uniform float minTessLevel = 2.0;   // Minimum safe tessellation level
-uniform float minDistance = 100.0;   // Distance where max tessellation applies
-uniform float maxDistance = 2500.0;  // Distance where tessellation is minimal
+uniform float minDistance = 50.0;   // Distance where max tessellation applies
+uniform float maxDistance = 100.0;  // Distance where tessellation is minimal
 
 void main()
 {

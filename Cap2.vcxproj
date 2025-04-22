@@ -139,6 +139,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="dependencies\include\imgui\imgui.cpp" />
+    <ClCompile Include="dependencies\include\imgui\imgui_draw.cpp" />
+    <ClCompile Include="dependencies\include\imgui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="dependencies\include\imgui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="dependencies\include\imgui\imgui_tables.cpp" />
+    <ClCompile Include="dependencies\include\imgui\imgui_widgets.cpp" />
     <ClCompile Include="glad.c" />
     <ClCompile Include="scenes\Main.cpp" />
     <ClCompile Include="scripts\Model_load.cpp" />
@@ -154,7 +160,16 @@
     <ClInclude Include="scripts\Shader.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\afu.cs" />
     <None Include="shaders\basic.frag" />
+    <None Include="shaders\oceanFFT.tcs" />
+    <None Include="shaders\oceanFFT.tes" />
+    <None Include="shaders\SpectrumConjugate.cps" />
+    <None Include="shaders\horizontalFFT.cps" />
+    <None Include="shaders\fftNormalize.cps" />
+    <None Include="shaders\oceanFFT.frag" />
+    <None Include="shaders\oceanFFT.vert" />
+    <None Include="shaders\time_evolution.cps" />
     <None Include="shaders\ocean.tcs" />
     <None Include="shaders\ocean.tes" />
     <None Include="shaders\ocean.vert" />
@@ -162,9 +177,16 @@
     <None Include="shaders\planet.vert" />
     <None Include="shaders\skybox.frag" />
     <None Include="shaders\skybox.vert" />
+    <None Include="shaders\verticalFFT.cps" />
+    <None Include="shaders\vTexture.frag" />
+    <None Include="shaders\Vtexture.vert" />
+    <None Include="shaders\Spectrum_INIT.cps" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="shaders\PP.vert" />
     <Text Include="shaders\backup.txt" />
+    <Text Include="shaders\precomputeDiddyFactor.cps" />
+    <Text Include="shaders\PP.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,67 +1,195 @@
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <Shader.h>
 #include <iostream>
 #include "stb/stb_image.h"
-#include<fileFinder.h>
+#include <fileFinder.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <camera.h>
 #include <Model.h>
+#include <ocean.h>
+
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_glfw.h>
+#include <imgui/imgui_impl_opengl3.h>
 #define PI 3.14
+#define IMGUI_IMPL_OPENGL_LOADER_GLAD
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 unsigned int loadTexture(char const* path);
-unsigned int loadTexture(char const* path);
 void load_VAO_VBO(unsigned int* vao, unsigned int* vbo, const float* vertices, const int* index);
 unsigned int loadCubemap(vector<std::string> faces);
-void load_Skybox(unsigned int* vao, unsigned int* vbo,unsigned int* cube_tex, vector<std::string> names);
-// settings
+void load_Skybox(unsigned int* vao, unsigned int* vbo, unsigned int* cube_tex, vector<std::string> names);
+float getShaderUniformFloat(const Shader& shader, const std::string& uniformName, float defaultValue);
+void ShowTextureSettingsWindow(OceanFFTGenerator& oceanSettings, ComputeShader& spectrum, ComputeShader& conjugate);
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+
 void renderScene(const Shader& shader);
 void renderCube();
 void renderQuad();
 void renderSphere();
-// camera
-Camera camera(glm::vec3(0.0f, 50.0f, 0.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 
 bool firstMouse = true;
 bool shadows = true;
 bool shadowsKeyPressed = false;
+bool cursorEnabled = false;
 
 float lastX = 800.0f / 2.0;
 float lastY = 600.0 / 2.0;
-
-
-// timing
-float deltaTime = 0.0f;	// time between current frame and last frame
+float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 unsigned int planeVAO;
 
 
+
+
+
+
+std::vector<Layer> layers;
+
+
+
+void DrawPerFrameSettings(
+    ComputeShader& time_evolution,
+    ComputeShader& normalizeFFT)
+{
+    ImGui::SetNextWindowSize(ImVec2(350, 300), ImGuiCond_Once);
+    if (!ImGui::Begin("Per Frame Parameters")) {
+        ImGui::End();
+        return;
+    }
+
+    // === Speed of the Simulation ===
+    if (ImGui::CollapsingHeader("Speed of the Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static int speed = 1;
+        static float repeatTime = 200.0f;
+
+        if (ImGui::SliderInt("Speed", &speed, 0, 10)) {
+            time_evolution.use();
+            time_evolution.setInt("speed", speed);
+        }
+
+        if (ImGui::SliderFloat("Repeat Time", &repeatTime, 1.0f, 200.0f, "%.1f")) {
+            time_evolution.use();
+            time_evolution.setFloat("RepeatTime", repeatTime);
+        }
+    }
+
+    // === Foam Simulation Parameters ===
+    if (ImGui::CollapsingHeader("Foam Simulation Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static glm::vec2 lambda = glm::vec2(1.0f, 1.0f);
+        static float foamDecayRate = 0.0175f;
+        static float foamBias = 0.85f;
+        static float foamThreshold = 0.0f;
+        static float foamAdd = 0.01f;
+
+        if (ImGui::SliderFloat2("Lambda", glm::value_ptr(lambda), 0.0f, 5.0f, "%.2f")) {
+            normalizeFFT.use();
+            normalizeFFT.setVec2("_Lambda", lambda);
+        }
+
+        if (ImGui::SliderFloat("Foam Decay Rate", &foamDecayRate, 0.0f, 1.0f, "%.4f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamDecayRate", foamDecayRate);
+        }
+
+        if (ImGui::SliderFloat("Foam Bias", &foamBias, -1.0f, 1.0f, "%.2f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamBias", foamBias);
+        }
+
+        if (ImGui::SliderFloat("Foam Threshold", &foamThreshold, 0.0f, 1.0f, "%.2f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamThreshold", foamThreshold);
+        }
+
+        if (ImGui::SliderFloat("Foam Add", &foamAdd, 0.0f, 0.1f, "%.3f")) {
+            normalizeFFT.use();
+            normalizeFFT.setFloat("_FoamAdd", foamAdd);
+        }
+    }
+
+    ImGui::End();
+}
+void DrawOceanSurfaceSettings(Shader& oceanShader)
+{
+    ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_Once);
+    if (!ImGui::Begin("Ocean Surface Appearance")) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::CollapsingHeader("Surface Appearance Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static glm::vec3 sunIrradiance = glm::vec3(1.0f, 0.694f, 0.32f);
+        static glm::vec3 scatterColor = glm::vec3(0.016f, 0.0736f, 0.16f);
+        static glm::vec3 bubbleColor = glm::vec3(0.0f, 0.02f, 0.016f);
+        static glm::vec3 foamColor = glm::vec3(0.9f, 0.9f, 1.0f);
+
+        static float normalStrength = 1.0f;
+        static float roughness = 0.075f;
+        static float foamRoughnessModifier = 0.0f;
+        static float environmentLightStrength = 0.5f;
+        static float heightModifier = 1.0f;
+        static float bubbleDensity = 1.0f;
+        static float wavePeakScatterStrength = 1.0f;
+        static float scatterStrength = 1.0f;
+        static float scatterShadowStrength = 0.5f;
+        static float displacementDepthAttenuation = 1.0f;
+        static float underwaterFadeStrength = 2.0f;
+
+        auto setColor = [&](const char* label, glm::vec3& value, const char* uniform) {
+            if (ImGui::ColorEdit3(label, glm::value_ptr(value))) {
+                oceanShader.use();
+                oceanShader.setVec3(uniform, value);
+            }
+            };
+
+        auto setSlider = [&](const char* label, float& value, float min, float max, const char* uniform) {
+            if (ImGui::SliderFloat(label, &value, min, max, "%.3f")) {
+                oceanShader.use();
+                oceanShader.setFloat(uniform, value);
+            }
+            };
+
+        setColor("Sun Irradiance", sunIrradiance, "_SunIrradiance");
+        setColor("Scatter Color", scatterColor, "_ScatterColor");
+        setColor("Bubble Color", bubbleColor, "_BubbleColor");
+        setColor("Foam Color", foamColor, "_FoamColor");
+
+        setSlider("Normal Strength", normalStrength, 0.0f, 2.0f, "_NormalStrength");
+        setSlider("Roughness", roughness, 0.0f, 1.0f, "_Roughness");
+        setSlider("Foam Roughness Modifier", foamRoughnessModifier, 0.0f, 1.0f, "_FoamRoughnessModifier");
+        setSlider("Environment Light Strength", environmentLightStrength, 0.0f, 2.0f, "_EnvironmentLightStrength");
+        setSlider("Height Modifier", heightModifier, 0.0f, 10.0f, "_HeightModifier");
+        setSlider("Bubble Density", bubbleDensity, 0.0f, 1.0f, "_BubbleDensity");
+        setSlider("Wave Peak Scatter Strength", wavePeakScatterStrength, 0.0f, 10.0f, "_WavePeakScatterStrength");
+        setSlider("Scatter Strength", scatterStrength, 0.0f, 10.0f, "_ScatterStrength");
+        setSlider("Scatter Shadow Strength", scatterShadowStrength, 0.0f, 1.0f, "_ScatterShadowStrength");
+        setSlider("Displacement Depth Attenuation", displacementDepthAttenuation, 0.0f, 5.0f, "_DisplacementDepthAttenuation");
+        setSlider("Underwater Fade Strength", underwaterFadeStrength, 0.0f, 5.0f, "_UnderwaterFadeStrength");
+    }
+
+    ImGui::End();
+}
+
 int main()
 {
-    // glfw: initialize and configure
-    // ------------------------------
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    // glfw window creation
-    // --------------------
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
-    if (window == NULL)
-    {
+    if (window == NULL) {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
         return -1;
@@ -70,134 +198,352 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-
-    // tell GLFW to capture our mouse
+    glfwSwapInterval(0);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // glad: load all OpenGL function pointers
-    // ---------------------------------------
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
- 
-    // configure global opengl state
-    // -----------------------------
+
     glEnable(GL_DEPTH_TEST);
 
-    // build and compile shaders
- // -------------------------
-    glEnable(GL_DEPTH_TEST);
-
-    // build and compile shaders
-    // -------------------------
- 
-    Shader modelShader("ocean.vert", "basic.frag",nullptr,"ocean.tcs","ocean.tes");
+    Shader textureLoad("vTexture.vert", "vTexture.frag");
     Shader skyboxShader("skybox.vert", "skybox.frag");
-    // load models
-    // -----------
 
-    Model ocean("ocean/ocean.obj");
-  
-   
-     
-    float scale_factor=100;
-    modelShader.use();
-    modelShader.setFloat("scaleFactor",scale_factor);
-    modelShader.setInt("skybox",5);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
 
-  glm:: vec3 sunDirection= glm::vec3(-0.2f, -1.0f, -0.9f);
-  glm::vec3 sunColor = glm::vec3(1.0, 0.7, 0.4);
-  modelShader.setVec3("sunColor", sunColor);
-  modelShader.setVec3("sunDirection", sunDirection);
-    vector<std::string> faces
-    {
-       fileFinder::getTexture("mountain_skybox/right.jpg"),
-      fileFinder::getTexture("mountain_skybox/left.jpg"),
-       fileFinder::getTexture("mountain_skybox/top.jpg"),
+    float scale_factor = 100;
+    textureLoad.use();
+    textureLoad.setFloat("scaleFactor", scale_factor);
+    textureLoad.setInt("skybox", 5);
+    glm::vec3 sunDirection = glm::vec3(-0.2f, -1.0f, -0.9f);
+    glm::vec3 sunColor = glm::vec3(1.0, 0.7, 0.4);
+    textureLoad.setVec3("sunColor", sunColor);
+    textureLoad.setVec3("sunDirection", sunDirection);
+
+    vector<std::string> faces = {
+        fileFinder::getTexture("mountain_skybox/right.jpg"),
+        fileFinder::getTexture("mountain_skybox/left.jpg"),
+        fileFinder::getTexture("mountain_skybox/top.jpg"),
         fileFinder::getTexture("mountain_skybox/bottom.jpg"),
         fileFinder::getTexture("mountain_skybox/front.jpg"),
-        fileFinder::getTexture("mountain_skybox/back.jpg"),
+        fileFinder::getTexture("mountain_skybox/back.jpg")
     };
+
     unsigned int skyboxVAO, skyboxVBO, cubemapTexture;
     load_Skybox(&skyboxVAO, &skyboxVBO, &cubemapTexture, faces);
     skyboxShader.use();
-    skyboxShader.setVec3("sunDirection",sunDirection);
-    skyboxShader.setVec3("sunColor",sunColor);
-    glPatchParameteri(GL_PATCH_VERTICES, 3);  // If using triangles (3 vertices per patch)
+    skyboxShader.setVec3("sunDirection", sunDirection);
+    skyboxShader.setVec3("sunColor", sunColor);
+    OceanFFTGenerator oceanSettings(layers);
+    ComputeShader spectrum("Spectrum_INIT.cps");
+    ComputeShader conjugate("SpectrumConjugate.cps");
+    
+    oceanSettings.CalculateSpectrum(spectrum, conjugate);
+    oceanSettings.createFFTWaterPlane(100);
 
-    // render loop
-    // -----------
-  //  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    ComputeShader timeEvolutionShader("time_evolution.cps");
+    timeEvolutionShader.use();
+
+
+    ComputeShader horizontalFFT("horizontalFFT.cps");
+    ComputeShader verticalFFT("verticalFFT.cps");
+
+    Shader oceanShader("oceanFFT.vert", "oceanFFT.frag", nullptr, "oceanFFT.tcs", "oceanFFT.tes");
+    oceanShader.use();
+
+   
+    oceanShader.setVec3("_lightDir",sunDirection);
+    oceanShader.setInt("_EnvironmentMap",2);
+    oceanShader.setInt("_SceneColor", 3);
+
+    oceanShader.setInt("_DisplacementTextures", 0);
+    oceanShader.setInt("_SlopeTextures", 1);
+
+    ComputeShader normalizeFFT("fftNormalize.cps");
+    normalizeFFT.use();
+
+
+
+    Shader screenShader("PP.vert","PP.frag");
+    screenShader.use();
+    screenShader.setInt("screenTexture",0);
+    screenShader.setInt("depthTexture", 1);
+    screenShader.setInt("DisplacementTextures", 2);
+    
+  
+    unsigned int framebuffer;
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    unsigned int textureColorbuffer;
+    glGenTextures(1, &textureColorbuffer);
+    glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
+
+    unsigned int depthTexture;
+    glGenTextures(1, &depthTexture);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, SCR_WIDTH, SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // Initialize ocean parameters from shader defaults
+    oceanShader.use();
+    
+
+    int fCounter = 0;
     while (!glfwWindowShouldClose(window))
     {
-        // per-frame time logic
-        // --------------------
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+        if (fCounter++ > 500) {
+            std::cout << "FPS: " << 1.0f / deltaTime << std::endl;
+            fCounter = 0;
+        }
 
-        // input
-        // -----
         processInput(window);
-
-        // render
-        // ------
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+
+        // === Ocean Spectrum Update ===
+        timeEvolutionShader.use();
+        timeEvolutionShader.setFloat("time", currentFrame);
+        oceanSettings.EvolveSpectrum(timeEvolutionShader);
+        oceanSettings.IFFT(horizontalFFT, verticalFFT);
+        oceanSettings.AssembleTextures(normalizeFFT);
+
+        // === Main Render Pass ===
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glEnable(GL_DEPTH_TEST);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // configure transformation matrices
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 10000.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 5000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-     
-        modelShader.use();
-        modelShader.setFloat("time",currentFrame);
-        modelShader.setMat4("projection", projection);
-        modelShader.setMat4("view", view);
-        modelShader.setVec3("cameraPos",camera.Position);
-    
-       
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::scale(model, glm::vec3(scale_factor,0,scale_factor)); // Assign the result of scaling
-       // glBindVertexArray(ocean_buffer);
-        modelShader.setMat4("model", model);
-        modelShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-        glActiveTexture(GL_TEXTURE5);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        ocean.Draw(modelShader);
-      //  glBindVertexArray(0);
-        
-     
-        // draw skybox as last
-        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+
+        textureLoad.use();
+        textureLoad.setMat4("model", model);
+        textureLoad.setMat4("view", view);
+        textureLoad.setMat4("projection", projection);
+        textureLoad.setInt("textureArray", 0);
+
+    
+     //ocean.Draw(oceanShader);
+        //renderCube();
+
+        oceanShader.use();
+        oceanShader.setMat4("model", model);
+        oceanShader.setMat4("inverse_model", glm::transpose(glm::inverse(glm::mat3(model))));
+        oceanShader.setMat4("view", view);
+        oceanShader.setMat4("projection", projection);
+        oceanShader.setVec3("cameraPos", camera.Position);
+        oceanShader.setInt("_TextureZ",oceanSettings.TextureCount());
+
+       
+
+
+   
+
+        // Skybox
+        glDepthFunc(GL_LEQUAL);
         skyboxShader.use();
-        view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
-        skyboxShader.setMat4("view", view);
+         auto skybox_view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
+        skyboxShader.setMat4("view", skybox_view);
+
         skyboxShader.setMat4("projection", projection);
-        // skybox cube
         glBindVertexArray(skyboxVAO);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
-        glDepthFunc(GL_LESS); // set depth function back to default
-  
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
+        glDepthFunc(GL_LESS);
+
+
+        oceanShader.use();
+        model = glm::mat4();
+        model = glm::scale(model, glm::vec3(1, 1, 1));
+        oceanShader.setMat4("model", model);
+        oceanShader.setMat4("inverse_model", glm::transpose(glm::inverse(glm::mat3(model))));
+        
+        oceanShader.setMat4("projection", projection);
+        oceanShader.setMat4("view", view);
+        oceanShader.setVec3("cameraPos", camera.Position);
+        oceanShader.setFloat("_Time",currentFrame);
+        oceanSettings.bindTextures();
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+        oceanSettings.RenderOcean();
+
+
+        // now bind back to default framebuffer and draw a quad plane with the attached framebuffer color texture
+
+        // Final screen render (postprocess pass)
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_DEPTH_TEST);
+        glClear(GL_COLOR_BUFFER_BIT);
+        screenShader.use();
+        screenShader.setVec3("cameraPos", camera.Position);
+        screenShader.setInt("_TextureZ", oceanSettings.TextureCount());
+
+        screenShader.setMat4("invViewProj", glm::inverse(projection * view));
+        
+
+        glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+    
+        glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, depthTexture);
+      glActiveTexture(GL_TEXTURE2);
+      glBindTexture(GL_TEXTURE_2D, oceanSettings.DisplacementTexture());
+        renderQuad();
+
+        // === IMGUI UI ===
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        if (cursorEnabled) {
+            DrawPerFrameSettings(timeEvolutionShader,normalizeFFT);
+            DrawOceanSurfaceSettings(oceanShader);
+        }
+        ShowTextureSettingsWindow(oceanSettings,spectrum,conjugate);
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-   
-
-    // optional: de-allocate all resources once they've outlived their purpose:
-    // ------------------------------------------------------------------------
-
+    // Cleanup
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
     glfwTerminate();
     return 0;
 }
   
+
+
+void ShowSpectrumSettings(DisplaySpectrumSettings& settings, const char* labelPrefix,const char* name)
+{
+    ImGui::Text(name);
+    ImGui::NextColumn();
+
+    ImGui::SliderFloat((std::string("Scale##") + labelPrefix).c_str(), &settings.scale, 0.0f, 5.0f);
+    ImGui::SliderFloat((std::string("Wind Speed##") + labelPrefix).c_str(), &settings.windSpeed, 0.0f, 100.0f);
+    ImGui::SliderFloat((std::string("Wind Direction##") + labelPrefix).c_str(), &settings.windDirection, 0.0f, 360.0f);
+    ImGui::SliderFloat((std::string("Fetch##") + labelPrefix).c_str(), &settings.fetch, 0.0f, 10000.0f);
+    ImGui::SliderFloat((std::string("Spread Blend##") + labelPrefix).c_str(), &settings.spreadBlend, 0.0f, 1.0f);
+    ImGui::SliderFloat((std::string("Swell##") + labelPrefix).c_str(), &settings.swell, 0.0f, 1.0f);
+    ImGui::SliderFloat((std::string("Peak Enhancement##") + labelPrefix).c_str(), &settings.peakEnhancement, 0.0f, 10.0f);
+    ImGui::SliderFloat((std::string("Short Waves Fade##") + labelPrefix).c_str(), &settings.shortWavesFade, 0.0f, 1.0f);
+}
+
+
+
+void ShowTextureSettingsWindow(OceanFFTGenerator& oceanSettings, ComputeShader& spectrum,ComputeShader& conjugate)
+{
+    static int sliderValue = 4;
+    static int selectedTextureIdx = 2;
+
+    static int seed = 1;
+    static float lowCutoff = 0.01f;
+    static float highCutoff = 9000.0f;
+    static float depth = 20.0f;
+    static float gravity = 9.8f;
+
+    static const char* textureSizes[] = {
+        "2048", "1024", "512", "256", "128", "64", "32", "16"
+    };
+    static const int numTextureSizes = sizeof(textureSizes) / sizeof(textureSizes[0]);
+
+    ImGui::Begin("Spectrum Settings");
+
+    // Slider for texture count
+    if (ImGui::SliderInt("Texture Count", &sliderValue, 1, 4)) {
+        if (layers.size() < sliderValue)
+            layers.resize(sliderValue);
+        else if (layers.size() > sliderValue)
+            layers.resize(sliderValue);
+    }
+
+    // Texture size selection
+    if (ImGui::BeginCombo("Texture Size", textureSizes[selectedTextureIdx])) {
+        for (int i = 0; i < numTextureSizes; i++) {
+            bool isSelected = (selectedTextureIdx == i);
+            if (ImGui::Selectable(textureSizes[i], isSelected))
+                selectedTextureIdx = i;
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    // New parameters
+    ImGui::SliderInt("Seed", &seed, 0, 1000000);
+    ImGui::SliderFloat("Low Cutoff", &lowCutoff, 0.0001f, 9000.0f, "%.4f");
+    ImGui::SliderFloat("High Cutoff", &highCutoff, 0.0001f, 9000.0f, "%.4f");
+    ImGui::SliderFloat("Depth", &depth, 2.0f, 20.0f);
+    ImGui::SliderFloat("Gravity", &gravity, 0.0f, 20.0f);
+
+    // Show UI for each layer
+    for (int i = 0; i < sliderValue; ++i) {
+        std::string layerLabel = "Layer " + std::to_string(i + 1);
+        if (ImGui::CollapsingHeader(layerLabel.c_str())) {
+            ImGui::InputInt(("Domain Size##" + std::to_string(i)).c_str(), &layers[i].DomainSize);
+            ShowSpectrumSettings(layers[i].spec1, ("Layer" + std::to_string(i) + "_Spec1").c_str(), "Spectrum 1");
+            ShowSpectrumSettings(layers[i].spec2, ("Layer" + std::to_string(i) + "_Spec2").c_str(), "Spectrum 2");
+        }
+    }
+
+    // Padding from edge
+    float padding = 10.0f;
+    float buttonWidth = 80.0f;
+
+    // Position to bottom right
+    float windowWidth = ImGui::GetWindowContentRegionMax().x;
+    ImGui::SetCursorPosX(windowWidth - buttonWidth - padding);
+    
+    if (ImGui::Button("Bake", ImVec2(buttonWidth, 0))) {
+        perChangeParameters parameters;
+        parameters.TextureSize = std::stoi(textureSizes[selectedTextureIdx]);
+        parameters.TextureCount = sliderValue;
+        parameters.seed = seed;
+        parameters.lowCutOff = lowCutoff;
+        parameters.highCutOff = highCutoff;
+        parameters.Depth = depth;
+        parameters.Gravity = gravity;
+        parameters.layers = layers; 
+
+       oceanSettings. InitialBake(parameters);
+       oceanSettings.CalculateSpectrum(spectrum, conjugate);
+    }
+    ImGui::End();
+}
+
+
+
+
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
@@ -206,15 +552,34 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
+    // Cursor toggle logic
+    static bool oKeyPressed = false;   // Track o key state
 
+    if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS && !oKeyPressed)
+    {
+        cursorEnabled = !cursorEnabled;
+        glfwSetInputMode(window, GLFW_CURSOR, cursorEnabled ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+        oKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_T) == GLFW_RELEASE)
+    {
+        oKeyPressed = false;
+    }
+
+    // Only process camera movement if the cursor is disabled (i.e., in FPS mode)
+    if (!cursorEnabled)
+    {
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            camera.ProcessKeyboard(FORWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            camera.ProcessKeyboard(BACKWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            camera.ProcessKeyboard(LEFT, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            camera.ProcessKeyboard(RIGHT, deltaTime);
+    }
+
+    // Toggle shadows with SPACE key
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed)
     {
         shadows = !shadows;
@@ -225,6 +590,9 @@ void processInput(GLFWwindow* window)
         shadowsKeyPressed = false;
     }
 }
+
+
+
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
 // ---------------------------------------------------------------------------------------------
@@ -240,6 +608,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 // -------------------------------------------------------
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 {
+    if (cursorEnabled)
+        return;
+
     float xpos = static_cast<float>(xposIn);
     float ypos = static_cast<float>(yposIn);
 
@@ -251,13 +622,17 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     }
 
     float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+    float yoffset = lastY - ypos;
 
     lastX = xpos;
     lastY = ypos;
 
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
+
+
+
+
 
 // glfw: whenever the mouse scroll wheel scrolls, this callback is called
 // ----------------------------------------------------------------------
@@ -647,6 +1022,7 @@ void renderSphere()
     glBindVertexArray(sphereVAO);
     glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
 }
+
 
 
 
